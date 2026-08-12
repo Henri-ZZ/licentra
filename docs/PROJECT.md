@@ -17,14 +17,17 @@ Licentra 是一个 **License key 服务端**（不是客户的桌面应用本体
 ## 2. 关键设计决策
 
 ### 2.1 原始 Key 不入库
+
 客户收到的原始 key（如 `K3PQ-W7HN-8YJZ-V9D2`）只在内存中存在；入库只存 SHA-256 hash。原始 key 通过邮件一次性送达。
 
 **后果**：
+
 - DB 泄漏不会泄漏可用的 key
 - 邮件发送失败 → 原始 key 丢失 → 需要重发时**生成新 Key + 吊销旧 Key**（"重发邮件"实际是"换发 Key"）
 - License Key 本身即凭证，不需要额外的 API key 鉴权；安全靠 16 字符随机（≈95 bit 熵）+ HTTPS + 邮件投递渠道安全
 
 ### 2.2 离线验签 + 强制在线 check-in
+
 客户端拿到 `{payload, signature}` 后**纯本地验签**——不需要每次访问 API。但本地验签**只能证明"服务端在签名那一刻认为这个 key 有效"**，**不能反映运行时变化**：
 
 - 设备被新设备挤掉名额（FIFO 踢出）
@@ -35,7 +38,9 @@ Licentra 是一个 **License key 服务端**（不是客户的桌面应用本体
 所以客户端必须**每 24 小时调一次** `/api/license/check-in`（v1 固定 24h），让服务端把当前最新签名回传。如果服务端发现该 fingerprint 已被踢出 / license 已被吊销 / 已退款，就返回 `valid: false` + `reason`，客户端清缓存。
 
 ### 2.3 每产品独立密钥对
+
 不同产品用不同的 ECDSA P-256 密钥对。客户应用按 `payload.product` 字段在本地公钥表里挑公钥验签：
+
 ```
 PUBLIC_KEYS = {
   "stealth-browser-assistant": `<PEM>`,
@@ -46,6 +51,7 @@ PUBLIC_KEYS = {
 每产品的私钥用 `LICENSE_MASTER_KEY`（AES-256-GCM）加密后存在 `Product.privateKeyEncrypted`。**主密钥泄漏则所有产品私钥泄漏**——必须严格保管。
 
 ### 2.4 FIFO 踢出
+
 每个 Product 配置 `maxActivations`（默认 3）。`/api/license/activate` 时：
 
 1. 同 fingerprint 已绑定 → 仅刷新 `lastCheckedAt`（幂等）
@@ -55,9 +61,11 @@ PUBLIC_KEYS = {
 整个流程在 `prisma.$transaction` 里跑，保证踢出和注册的原子性。
 
 ### 2.5 Paddle webhook 是事实来源
+
 License 不允许在 Dashboard 手创——只由 Paddle 付款事件触发。这样不会出现"签发了 Key 但没收到钱"的不一致。webhook 幂等：`WebhookEvent.paddleEventId` 唯一索引，重复 event 直接 200 返回。
 
 ### 2.6 单用户鉴权
+
 v1 没有 User 表，`ADMIN_EMAIL` / `ADMIN_PASSWORD` 写死（常量时间比较），登录后下发 HS256 JWT cookie。`proxy.ts`（Next.js 16 重命名自 `middleware.ts`）保护 `/dashboard/*`。**后续接多用户只需把 `verifyCredentials` 换成 Prisma lookup**。
 
 ---
@@ -70,13 +78,13 @@ Product ─┬─< LicenseKey ─< Activation
 WebhookEvent (独立)
 ```
 
-| 表 | 关键字段 |
-|---|---|
-| `Product` | `slug` (unique), `paddleProductId` (unique), `privateKeyEncrypted`, `publicKey`, `publicKeyFingerprint` (unique), `maxActivations`, `emailSubject`/`emailBodyHtml`/`resendFromAddress` |
-| `LicenseKey` | `keyHash` (unique, **SHA-256(原始 key)**), `productId`, `orderId`, `maxActivations`, `revoked`/`revokedAt`/`revokedReason`, `emailedAt`/`emailError`/`emailAttempts` |
-| `Activation` | `licenseKeyId`, `fingerprint` (**SHA-256(原始设备指纹)**, 不是原始值), `label`, `ipAddress`, `userAgent`, `lastCheckedAt`, 唯一 `(licenseKeyId, fingerprint)` |
-| `Order` | `paddleTransactionId` (unique), `paddleEmail`, `productId`, `amount`(分), `currency`, `status`, `rawPayload`(Json) |
-| `WebhookEvent` | `paddleEventId` (unique), `eventType`, `processed`, `payload`(Json), `error` |
+| 表             | 关键字段                                                                                                                                                                               |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Product`      | `slug` (unique), `paddleProductId` (unique), `privateKeyEncrypted`, `publicKey`, `publicKeyFingerprint` (unique), `maxActivations`, `emailSubject`/`emailBodyHtml`/`resendFromAddress` |
+| `LicenseKey`   | `keyHash` (unique, **SHA-256(原始 key)**), `productId`, `orderId`, `maxActivations`, `revoked`/`revokedAt`/`revokedReason`, `emailedAt`/`emailError`/`emailAttempts`                   |
+| `Activation`   | `licenseKeyId`, `fingerprint` (**SHA-256(原始设备指纹)**, 不是原始值), `label`, `ipAddress`, `userAgent`, `lastCheckedAt`, 唯一 `(licenseKeyId, fingerprint)`                          |
+| `Order`        | `paddleTransactionId` (unique), `paddleEmail`, `productId`, `amount`(分), `currency`, `status`, `rawPayload`(Json)                                                                     |
+| `WebhookEvent` | `paddleEventId` (unique), `eventType`, `processed`, `payload`(Json), `error`                                                                                                           |
 
 完整定义见 [prisma/schema.prisma](prisma/schema.prisma)。
 
@@ -112,6 +120,7 @@ WebhookEvent (独立)
 ```
 
 **重试策略**：
+
 - 同 `paddleEventId` 重发 → 幂等跳过
 - 同 `paddleTransactionId` 但不同 `paddleEventId`（Paddle 真的会重发整个 transaction）：
   - `emailedAt != null` → 直接 200
@@ -157,12 +166,12 @@ WebhookEvent 写入 → handleTransactionUpdated
 
 ### 4.4 各 API 行为一览
 
-| 端点 | 入参 | 行为 | 副作用 |
-|---|---|---|---|
-| `POST /api/license/validate` | `{ key }` | 按 hash 查 license，返回签名 payload | 无 |
-| `POST /api/license/activate` | `{ key, fingerprint, label? }` | 同 fp 刷新 / 新 fp 注册 / 满则 FIFO 踢出 | 写 Activation |
-| `POST /api/license/check-in` | `{ key, fingerprint, client_version?, platform? }` | 验证 license + 验证 fp 仍绑定，刷新 lastCheckedAt | 写 lastCheckedAt |
-| `POST /api/license/deactivate` | `{ key, fingerprint }` | 删 Activation（幂等） | 删 Activation |
+| 端点                           | 入参                                               | 行为                                              | 副作用           |
+| ------------------------------ | -------------------------------------------------- | ------------------------------------------------- | ---------------- |
+| `POST /api/license/validate`   | `{ key }`                                          | 按 hash 查 license，返回签名 payload              | 无               |
+| `POST /api/license/activate`   | `{ key, fingerprint, label? }`                     | 同 fp 刷新 / 新 fp 注册 / 满则 FIFO 踢出          | 写 Activation    |
+| `POST /api/license/check-in`   | `{ key, fingerprint, client_version?, platform? }` | 验证 license + 验证 fp 仍绑定，刷新 lastCheckedAt | 写 lastCheckedAt |
+| `POST /api/license/deactivate` | `{ key, fingerprint }`                             | 删 Activation（幂等）                             | 删 Activation    |
 
 License API **不做鉴权**（key 即凭证）。`/api/webhook/paddle` 用 HMAC 验签；`/api/products/*` 和 `/api/licenses/*`（管理用）走 dashboard session。
 
@@ -178,8 +187,6 @@ cp .env.example .env.local      # 填 Neon URL + Paddle webhook secret + Resend 
 pnpm prisma db push             # 建表
 pnpm dev                        # 起 http://localhost:3000
 ```
-
-默认账号：`henrizhang@henri.ren` / `Gun748..`（**仅开发用**，生产必须改 env）。
 
 ### 5.2 创建一个新产品并接入 Paddle
 
@@ -217,7 +224,7 @@ function verifyLicense({ payload, signature }) {
     "sha256",
     Buffer.from(JSON.stringify(payload), "utf8"),
     crypto.createPublicKey(publicKeyPem),
-    Buffer.from(signature, "base64")
+    Buffer.from(signature, "base64"),
   );
 }
 ```
@@ -226,13 +233,13 @@ function verifyLicense({ payload, signature }) {
 
 ### 5.4 日常运营
 
-| 场景 | 操作 |
-|---|---|
-| 客户说自己没收到 key | Dashboard → Licenses → 搜邮箱 → "Resend email"（**实际是换发新 key + 吊销旧的**，原 key 找不回来了） |
-| 客户退款 | Paddle 自动 → webhook → license 自动 revoked；无需手动操作 |
-| 客户超过 maxActivations | 自动 FIFO 踢出最早一台；不需要 admin 介入。客户被踢出的设备下次启动会拿到 `valid: false` |
-| 紧急吊销某个 key | Dashboard → Licenses → Revoke（reason 可选） |
-| 改邮件模板 | Dashboard → Products → 编辑 → 立刻对**后续新订单**生效；存量订单仍用创建时的模板 |
+| 场景                    | 操作                                                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------- |
+| 客户说自己没收到 key    | Dashboard → Licenses → 搜邮箱 → "Resend email"（**实际是换发新 key + 吊销旧的**，原 key 找不回来了） |
+| 客户退款                | Paddle 自动 → webhook → license 自动 revoked；无需手动操作                                           |
+| 客户超过 maxActivations | 自动 FIFO 踢出最早一台；不需要 admin 介入。客户被踢出的设备下次启动会拿到 `valid: false`             |
+| 紧急吊销某个 key        | Dashboard → Licenses → Revoke（reason 可选）                                                         |
+| 改邮件模板              | Dashboard → Products → 编辑 → 立刻对**后续新订单**生效；存量订单仍用创建时的模板                     |
 
 ### 5.5 烟雾测试
 
@@ -246,16 +253,16 @@ pnpm tsx scripts/smoke-sign.ts
 
 ## 6. 安全模型
 
-| 项 | 说明 |
-|---|---|
-| License Key 存储 | 只存 SHA-256(原始 key)。原 key 邮件一次性投递，不入 DB |
-| Webhook 验签 | HMAC-SHA256 over `${ts}.${rawBody}`，时窗 ±5min，常量时间比较 |
-| Dashboard 鉴权 | HS256 JWT in `httpOnly` cookie，单用户硬编码 env |
-| License API 鉴权 | **无**（key 即凭证）。安全模型：16 字符 ≈95 bit 熵 + HTTPS + 邮件渠道安全 |
-| 产品私钥 | AES-256-GCM 加密，`LICENSE_MASTER_KEY` 是 32-byte hex（64 chars） |
-| 设备指纹 | 入库前 SHA-256；DB 泄漏不暴露原始设备标识 |
-| 签名序列化 | `JSON.stringify(payload)` 键顺序必须固定：`product → plan → license_id → expires_at`。改动 = 协议破坏 |
-| 主密钥泄漏 | ⇒ 所有产品私钥可解 ⇒ 所有 license 可伪造。**生产环境必须用 KMS 或 secret manager** |
+| 项               | 说明                                                                                                  |
+| ---------------- | ----------------------------------------------------------------------------------------------------- |
+| License Key 存储 | 只存 SHA-256(原始 key)。原 key 邮件一次性投递，不入 DB                                                |
+| Webhook 验签     | HMAC-SHA256 over `${ts}.${rawBody}`，时窗 ±5min，常量时间比较                                         |
+| Dashboard 鉴权   | HS256 JWT in `httpOnly` cookie，单用户硬编码 env                                                      |
+| License API 鉴权 | **无**（key 即凭证）。安全模型：16 字符 ≈95 bit 熵 + HTTPS + 邮件渠道安全                             |
+| 产品私钥         | AES-256-GCM 加密，`LICENSE_MASTER_KEY` 是 32-byte hex（64 chars）                                     |
+| 设备指纹         | 入库前 SHA-256；DB 泄漏不暴露原始设备标识                                                             |
+| 签名序列化       | `JSON.stringify(payload)` 键顺序必须固定：`product → plan → license_id → expires_at`。改动 = 协议破坏 |
+| 主密钥泄漏       | ⇒ 所有产品私钥可解 ⇒ 所有 license 可伪造。**生产环境必须用 KMS 或 secret manager**                    |
 
 ### 不在 v1 范围
 
@@ -323,6 +330,7 @@ licentra/
 ## 8. API 速查
 
 ### `POST /api/license/validate`
+
 ```json
 请求: { "key": "K3PQ-W7HN-8YJZ-V9D2" }
 成功响应:
@@ -340,24 +348,28 @@ licentra/
 ```
 
 ### `POST /api/license/activate`
+
 ```json
 请求: { "key": "...", "fingerprint": "<设备指纹原文>", "label": "MacBook Pro" }
 成功响应: 同 validate
 ```
 
 ### `POST /api/license/check-in`
+
 ```json
 请求: { "key": "...", "fingerprint": "...", "client_version": "1.2.3", "platform": "macos" }
 成功响应: { ...validate 响应, "next_check_in_seconds": 86400 }
 ```
 
 ### `POST /api/license/deactivate`
+
 ```json
 请求: { "key": "...", "fingerprint": "..." }
 成功响应: 同 validate
 ```
 
 ### `POST /api/webhook/paddle`
+
 由 Paddle 调用（HMAC 验签）。客户端应用不应直接调用。
 
 ---

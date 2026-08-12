@@ -28,9 +28,6 @@ pnpm dev
 Open <http://localhost:3000>; you'll be redirected to `/login`. Default
 admin credentials (for development only) are in `src/lib/env.ts`:
 
-- email: `henrizhang@henri.ren`
-- password: `Gun748..`
-
 ## Configuration
 
 All environment variables are validated at startup by `src/lib/env.ts`
@@ -165,7 +162,7 @@ function verifyLicense(response) {
     "sha256",
     Buffer.from(JSON.stringify(payload), "utf8"),
     createPublicKey(publicKeyPem),
-    Buffer.from(signature, "base64")
+    Buffer.from(signature, "base64"),
   );
   return ok;
 }
