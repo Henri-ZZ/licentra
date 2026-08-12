@@ -6,29 +6,32 @@ import { env } from "@/lib/env";
  * Resend email client + simple placeholder-rendering for product-specific
  * license-key delivery emails.
  *
- * Templates are stored on the Product row and use `{{key}}`, `{{productName}}`,
- * `{{plan}}`, `{{licenseId}}`, `{{maxActivations}}` placeholders.
+ * Templates are stored on `ProductEmailTemplate` rows and use a mix of
+ * placeholders:
+ *   {{xxx}} — interpolated at send time (this file)
+ *   [[xxx]] — literal hints the admin edits out before saving (left alone)
+ *
+ * Supported interpolation vars (see `LicenseEmailVars` below).
  */
 
 const resend = new Resend(env.RESEND_API_KEY);
 
 export interface LicenseEmailVars {
-  key: string;
+  /** License key string (the customer's actual key). */
+  code: string;
+  /** Product display name. */
   productName: string;
+  /** Plan name (e.g. "standard", "lifetime"). */
   plan: string;
-  licenseId: string;
+  /** License ID (cuid), shown as the order reference. */
+  orderId: string;
+  /** Customer email (the recipient). */
+  email: string;
+  /** Maximum number of activations allowed. */
   maxActivations: number;
-  customerEmail?: string;
+  /** Support contact address, from `SUPPORT_EMAIL` env. */
+  supportEmail: string;
 }
-
-const PLACEHOLDER_MAP: Record<keyof LicenseEmailVars, string> = {
-  key: "{{key}}",
-  productName: "{{productName}}",
-  plan: "{{plan}}",
-  licenseId: "{{licenseId}}",
-  maxActivations: "{{maxActivations}}",
-  customerEmail: "{{customerEmail}}",
-};
 
 function render(template: string, vars: LicenseEmailVars): string {
   return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
@@ -45,12 +48,18 @@ export interface SendLicenseEmailInput {
   fromAddress: string;
   subject: string;
   bodyHtml: string;
-  vars: LicenseEmailVars;
+  vars: Omit<LicenseEmailVars, "supportEmail"> & { supportEmail?: string };
 }
 
 export async function sendLicenseEmail(input: SendLicenseEmailInput): Promise<void> {
-  const subject = render(input.subject, input.vars);
-  const html = render(input.bodyHtml, input.vars);
+  // Fill in supportEmail from env if the caller didn't supply it.
+  const { supportEmail: inputSupport, ...rest } = input.vars;
+  const vars: LicenseEmailVars = {
+    ...rest,
+    supportEmail: inputSupport ?? env.SUPPORT_EMAIL,
+  };
+  const subject = render(input.subject, vars);
+  const html = render(input.bodyHtml, vars);
 
   const { error } = await resend.emails.send({
     from: input.fromAddress,
@@ -65,26 +74,6 @@ export async function sendLicenseEmail(input: SendLicenseEmailInput): Promise<vo
 }
 
 /**
- * Default subject + body templates used when a Product has no override.
- * Kept generic so they work for any one-time-purchase license.
- */
-export const DEFAULT_EMAIL_SUBJECT = "Your {{productName}} License Key";
-
-export const DEFAULT_EMAIL_BODY_HTML = `
-<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
-  <h1 style="font-size: 20px; margin-bottom: 16px;">Thanks for purchasing {{productName}}!</h1>
-  <p>Your license key is below. Keep it safe — we do not store the raw key and cannot retrieve it for you.</p>
-  <div style="background: #f4f4f5; border-radius: 8px; padding: 16px; margin: 24px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16px; letter-spacing: 1px; text-align: center;">
-    {{key}}
-  </div>
-  <p><strong>Plan:</strong> {{plan}}<br/><strong>Max devices:</strong> {{maxActivations}}</p>
-  <p style="color: #71717a; font-size: 13px; margin-top: 32px;">
-    License ID: {{licenseId}}
-  </p>
-</div>
-`.trim();
-
-/**
  * Stubs used in dev/test to avoid hitting the real Resend API. The webhook
  * handler will call this in place of sendLicenseEmail when RESEND_API_KEY
  * looks like the placeholder.
@@ -94,8 +83,14 @@ export function isResendStubMode(): boolean {
 }
 
 export async function stubSendLicenseEmail(input: SendLicenseEmailInput): Promise<void> {
-  const subject = render(input.subject, input.vars);
-  const body = render(input.bodyHtml, input.vars);
+  // Stub mode also needs a fully-typed `LicenseEmailVars` for `render()`.
+  const { supportEmail: inputSupport, ...rest } = input.vars;
+  const vars: LicenseEmailVars = {
+    ...rest,
+    supportEmail: inputSupport ?? env.SUPPORT_EMAIL,
+  };
+  const subject = render(input.subject, vars);
+  const body = render(input.bodyHtml, vars);
   console.info(
     `[email-stub] to=${input.to} from=${input.fromAddress} subject="${subject}"\n${body}\n---`
   );

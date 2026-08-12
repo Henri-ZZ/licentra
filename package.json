@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "backfill:templates": "tsx scripts/backfill-email-templates.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

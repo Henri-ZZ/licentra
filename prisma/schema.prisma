@@ -23,15 +23,39 @@ model Product {
   publicKey            String?
   publicKeyFingerprint String?      @unique
 
-  // Email template
-  emailSubject         String?
-  emailBodyHtml        String?
-  resendFromAddress    String?
+  // Per-product support contact, substituted into the {{supportEmail}}
+  // placeholder. Falls back to env.SUPPORT_EMAIL, then to a hard-coded
+  // Resend dev address, when this is null.
+  supportEmail         String?
 
   licenses             LicenseKey[]
   orders               Order[]
+  templates            ProductEmailTemplate[]
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
+}
+
+model ProductEmailTemplate {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // Simplified language code: "en" "zh" "ja" "de" — no region suffix.
+  // Paddle's BCP-47 strings like "zh-CN" are matched by `-` prefix.
+  locale      String
+  // Admin-facing friendly name: "English" / "简体中文" / "日本語".
+  displayName String
+  // Exactly one default per product, currently always `en`. Enforced in
+  // application code (no DB-level partial unique constraint).
+  isDefault   Boolean  @default(false)
+  // Optional per-template from address. Falls back to Product.resendFromAddress.
+  fromAddress String?
+  subject     String
+  bodyHtml    String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([productId, locale])
+  @@index([productId])
 }
 
 model LicenseKey {
@@ -79,6 +103,9 @@ model Order {
   paddleTransactionId String       @unique
   paddleCustomerId    String?
   paddleEmail         String?
+  // BCP-47 locale captured from Paddle (e.g. "zh-CN"). Used at email-send
+  // time to pick a ProductEmailTemplate by language-code prefix.
+  locale              String?
   productId           String?
   product             Product?     @relation(fields: [productId], references: [id])
   amount              Int

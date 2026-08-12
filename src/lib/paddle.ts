@@ -84,6 +84,16 @@ export interface PaddleTransactionCompleted {
     customer_id?: string | null;
     custom_data?: PaddleCustomData | null;
     items?: PaddleTransactionItem[];
+    // Paddle Billing includes customer data on the transaction itself,
+    // including the checkout locale (`en-US`, `zh-CN`, ...). Field
+    // placement has varied across Paddle API versions, so callers should
+    // fall back through `details.customer.*` if these are missing.
+    customer?: {
+      id?: string;
+      email?: string;
+      name?: string | null;
+      locale?: string;
+    } | null;
     details?: {
       totals?: {
         grand_total?: number;
@@ -91,6 +101,7 @@ export interface PaddleTransactionCompleted {
       };
       customer?: {
         email?: string;
+        locale?: string;
       };
     };
   };

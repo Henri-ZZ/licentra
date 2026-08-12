@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 
+import { DeleteProductButton } from "@/app/(dashboard)/dashboard/products/delete-product-button";
 import { GenerateKeyButton } from "@/app/(dashboard)/dashboard/products/[id]/generate-key-button";
 import { ProductEditForm } from "@/app/(dashboard)/dashboard/products/[id]/product-edit-form";
+import { ProductTemplatesCard } from "@/app/(dashboard)/dashboard/products/[id]/product-templates-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 
@@ -13,7 +15,10 @@ export default async function ProductDetailPage({ params }: PageProps) {
   const { id } = await params;
   const product = await prisma.product.findUnique({
     where: { id },
-    include: { _count: { select: { licenses: true } } },
+    include: {
+      _count: { select: { licenses: true } },
+      templates: { orderBy: [{ isDefault: "desc" }, { locale: "asc" }] },
+    },
   });
   if (!product) notFound();
 
@@ -28,6 +33,19 @@ export default async function ProductDetailPage({ params }: PageProps) {
       </div>
 
       <ProductEditForm product={product} />
+
+      <ProductTemplatesCard
+        productId={product.id}
+        templates={product.templates.map((t) => ({
+          id: t.id,
+          locale: t.locale,
+          displayName: t.displayName,
+          isDefault: t.isDefault,
+          fromAddress: t.fromAddress,
+          subject: t.subject,
+          bodyHtml: t.bodyHtml,
+        }))}
+      />
 
       <Card>
         <CardHeader>
@@ -72,6 +90,25 @@ export default async function ProductDetailPage({ params }: PageProps) {
               />
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-destructive/40">
+        <CardHeader>
+          <CardTitle className="text-destructive">Danger zone</CardTitle>
+          <CardDescription>
+            Deleting a product permanently removes its signing key, email
+            template, and any metadata. Refunds and historical orders are not
+            affected.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DeleteProductButton
+            productId={product.id}
+            productName={product.name}
+            productSlug={product.slug}
+            licenseCount={product._count.licenses}
+          />
         </CardContent>
       </Card>
     </div>

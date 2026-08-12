@@ -45,6 +45,14 @@ const envSchema = z.object({
   // --- Resend ---
   RESEND_API_KEY: z.string().min(1).default("re_dev_replace_me"),
 
+  // --- Email template vars ---
+  // {{supportEmail}} placeholder in default email templates. Falls back
+  // to the no-reply Resend dev address so dev/stub mode still renders.
+  SUPPORT_EMAIL: z
+    .string()
+    .email()
+    .default("onboarding@resend.dev"),
+
   // --- App ---
   NEXT_PUBLIC_APP_URL: z
     .string()

@@ -3,6 +3,10 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { getSessionEmail } from "@/lib/auth";
+import {
+  DEFAULT_EMAIL_BODY_HTML,
+  DEFAULT_EMAIL_SUBJECT,
+} from "@/lib/email-default-template";
 import { prisma } from "@/lib/prisma";
 
 const productSchema = z.object({
@@ -18,9 +22,7 @@ const productSchema = z.object({
   paddlePriceId: z.string().max(120).optional().nullable(),
   maxActivations: z.number().int().min(1).max(100).default(3),
   active: z.boolean().default(true),
-  emailSubject: z.string().max(200).optional().nullable(),
-  emailBodyHtml: z.string().max(20000).optional().nullable(),
-  resendFromAddress: z.string().max(200).optional().nullable(),
+  supportEmail: z.string().email().max(200).optional().nullable(),
 });
 
 export async function POST(request: NextRequest) {
@@ -55,7 +57,24 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const product = await prisma.product.create({ data: parsed.data });
+    // Product + default "en" template must be created together. If either
+    // insert fails (e.g. unique constraint on slug, malformed template),
+    // we roll back the whole thing so we never ship a product with no
+    // email templates.
+    const product = await prisma.$transaction(async (db) => {
+      const created = await db.product.create({ data: parsed.data });
+      await db.productEmailTemplate.create({
+        data: {
+          productId: created.id,
+          locale: "en",
+          displayName: "English",
+          isDefault: true,
+          subject: DEFAULT_EMAIL_SUBJECT,
+          bodyHtml: DEFAULT_EMAIL_BODY_HTML,
+        },
+      });
+      return created;
+    });
     return NextResponse.json({ ok: true, product });
   } catch (err) {
     // Race: pre-check passed but a concurrent POST inserted the same slug

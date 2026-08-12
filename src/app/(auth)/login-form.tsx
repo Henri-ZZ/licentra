@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 
+import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,6 +48,7 @@ export function LoginForm({ next }: { next: string }) {
             <p className="text-sm text-destructive">{state.error}</p>
           )}
           <Button type="submit" className="w-full" disabled={pending}>
+            {pending && <Spinner />}
             {pending ? "Signing in…" : "Sign in"}
           </Button>
         </form>

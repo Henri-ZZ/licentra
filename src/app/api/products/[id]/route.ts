@@ -12,9 +12,7 @@ const updateSchema = z.object({
   paddlePriceId: z.string().max(120).optional().nullable(),
   maxActivations: z.number().int().min(1).max(100).optional(),
   active: z.boolean().optional(),
-  emailSubject: z.string().max(200).optional().nullable(),
-  emailBodyHtml: z.string().max(20000).optional().nullable(),
-  resendFromAddress: z.string().max(200).optional().nullable(),
+  supportEmail: z.string().email().max(200).optional().nullable(),
 });
 
 export async function PATCH(

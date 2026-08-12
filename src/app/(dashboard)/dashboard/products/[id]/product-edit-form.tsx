@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,37 +13,43 @@ import type { Product } from "@prisma/client";
 export function ProductEditForm({ product }: { product: Product }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [inFlight, setInFlight] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    const fd = new FormData(e.currentTarget);
-    const payload = {
-      name: String(fd.get("name") ?? ""),
-      description: String(fd.get("description") ?? "") || null,
-      plan: String(fd.get("plan") ?? ""),
-      paddleProductId: String(fd.get("paddleProductId") ?? "") || null,
-      paddlePriceId: String(fd.get("paddlePriceId") ?? "") || null,
-      maxActivations: Number(fd.get("maxActivations") ?? 3),
-      active: fd.get("active") === "on",
-      emailSubject: String(fd.get("emailSubject") ?? "") || null,
-      emailBodyHtml: String(fd.get("emailBodyHtml") ?? "") || null,
-      resendFromAddress: String(fd.get("resendFromAddress") ?? "") || null,
-    };
-    const res = await fetch(`/api/products/${product.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setError(body.error ?? `Error ${res.status}`);
-      return;
+    setInFlight(true);
+    try {
+      const fd = new FormData(e.currentTarget);
+      const payload = {
+        name: String(fd.get("name") ?? ""),
+        description: String(fd.get("description") ?? "") || null,
+        plan: String(fd.get("plan") ?? ""),
+        paddleProductId: String(fd.get("paddleProductId") ?? "") || null,
+        paddlePriceId: String(fd.get("paddlePriceId") ?? "") || null,
+        maxActivations: Number(fd.get("maxActivations") ?? 3),
+        active: fd.get("active") === "on",
+        supportEmail: String(fd.get("supportEmail") ?? "") || null,
+      };
+      const res = await fetch(`/api/products/${product.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error ?? `Error ${res.status}`);
+        return;
+      }
+      toast.success("Saved");
+      startTransition(() => router.refresh());
+    } finally {
+      setInFlight(false);
     }
-    toast.success("Saved");
-    startTransition(() => router.refresh());
   }
+
+  const busy = inFlight || pending;
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
@@ -106,43 +113,25 @@ export function ProductEditForm({ product }: { product: Product }) {
       </div>
 
       <div className="space-y-2 border-t pt-4">
-        <Label htmlFor="resendFromAddress">Email from</Label>
+        <Label htmlFor="supportEmail">Support email</Label>
         <Input
-          id="resendFromAddress"
-          name="resendFromAddress"
-          defaultValue={product.resendFromAddress ?? ""}
-          placeholder="Licentra <noreply@henri.ren>"
+          id="supportEmail"
+          name="supportEmail"
+          type="email"
+          defaultValue={product.supportEmail ?? ""}
+          placeholder="support@henri.ren"
         />
+        <p className="text-xs text-muted-foreground">
+          Substituted into <code className="font-mono">{`{{supportEmail}}`}</code>{" "}
+          at send time. Falls back to <code>SUPPORT_EMAIL</code> from env when
+          empty.
+        </p>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="emailSubject">Email subject</Label>
-        <Input
-          id="emailSubject"
-          name="emailSubject"
-          defaultValue={product.emailSubject ?? ""}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="emailBodyHtml">Email body HTML</Label>
-        <textarea
-          id="emailBodyHtml"
-          name="emailBodyHtml"
-          rows={10}
-          defaultValue={product.emailBodyHtml ?? ""}
-          className="flex min-h-[160px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono"
-        />
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Placeholders: <code className="font-mono">{`{{key}}`}</code>{" "}
-        <code className="font-mono">{`{{productName}}`}</code>{" "}
-        <code className="font-mono">{`{{plan}}`}</code>{" "}
-        <code className="font-mono">{`{{licenseId}}`}</code>{" "}
-        <code className="font-mono">{`{{maxActivations}}`}</code>
-      </p>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
-      <Button type="submit" disabled={pending}>
-        {pending ? "Saving…" : "Save changes"}
+      <Button type="submit" disabled={busy}>
+        {busy && <Spinner />}
+        {busy ? "Saving…" : "Save changes"}
       </Button>
     </form>
   );

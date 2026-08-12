@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 import { LicenseRowActions } from "@/app/(dashboard)/dashboard/licenses/license-row-actions";
+import { LicensesSearchForm } from "@/app/(dashboard)/dashboard/licenses/licenses-search-form";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -65,15 +65,7 @@ export default async function LicensesPage({ searchParams }: PageProps) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="flex gap-2">
-            <input
-              name="q"
-              defaultValue={q}
-              placeholder="email or transaction id"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            />
-            <Button type="submit">Search</Button>
-          </form>
+          <LicensesSearchForm defaultValue={q} />
         </CardContent>
       </Card>
 

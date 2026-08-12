@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,45 +12,51 @@ import { Label } from "@/components/ui/label";
 export function ProductForm() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [inFlight, setInFlight] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    const fd = new FormData(e.currentTarget);
-    const payload = {
-      name: String(fd.get("name") ?? ""),
-      slug: String(fd.get("slug") ?? ""),
-      description: String(fd.get("description") ?? "") || null,
-      plan: String(fd.get("plan") ?? "standard"),
-      paddleProductId: String(fd.get("paddleProductId") ?? "") || null,
-      paddlePriceId: String(fd.get("paddlePriceId") ?? "") || null,
-      maxActivations: Number(fd.get("maxActivations") ?? 3),
-      active: fd.get("active") === "on",
-      emailSubject: String(fd.get("emailSubject") ?? "") || null,
-      emailBodyHtml: String(fd.get("emailBodyHtml") ?? "") || null,
-      resendFromAddress: String(fd.get("resendFromAddress") ?? "") || null,
-    };
+    setInFlight(true);
+    try {
+      const fd = new FormData(e.currentTarget);
+      const payload = {
+        name: String(fd.get("name") ?? ""),
+        slug: String(fd.get("slug") ?? ""),
+        description: String(fd.get("description") ?? "") || null,
+        plan: String(fd.get("plan") ?? "standard"),
+        paddleProductId: String(fd.get("paddleProductId") ?? "") || null,
+        paddlePriceId: String(fd.get("paddlePriceId") ?? "") || null,
+        maxActivations: Number(fd.get("maxActivations") ?? 3),
+        active: fd.get("active") === "on",
+        supportEmail: String(fd.get("supportEmail") ?? "") || null,
+      };
 
-    const res = await fetch("/api/products", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+      const res = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setError(body.error ?? `Error ${res.status}`);
-      return;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error ?? `Error ${res.status}`);
+        return;
+      }
+
+      const body = await res.json();
+      toast.success("Product created");
+      startTransition(() => {
+        router.push(`/dashboard/products/${body.product.id}`);
+        router.refresh();
+      });
+    } finally {
+      setInFlight(false);
     }
-
-    const body = await res.json();
-    toast.success("Product created");
-    startTransition(() => {
-      router.push(`/dashboard/products/${body.product.id}`);
-      router.refresh();
-    });
   }
+
+  const busy = inFlight || pending;
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
@@ -115,35 +122,25 @@ export function ProductForm() {
           />
         </div>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="resendFromAddress">Email from address</Label>
+      <div className="space-y-2 border-t pt-4">
+        <Label htmlFor="supportEmail">Support email</Label>
         <Input
-          id="resendFromAddress"
-          name="resendFromAddress"
-          placeholder="Licentra <noreply@henri.ren>"
+          id="supportEmail"
+          name="supportEmail"
+          type="email"
+          placeholder="support@henri.ren"
         />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="emailSubject">Email subject</Label>
-        <Input
-          id="emailSubject"
-          name="emailSubject"
-          placeholder="Your {{productName}} License Key"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="emailBodyHtml">Email body HTML</Label>
-        <textarea
-          id="emailBodyHtml"
-          name="emailBodyHtml"
-          rows={10}
-          className="flex min-h-[160px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono"
-          defaultValue='<p>Thanks for purchasing {{productName}}!</p><p>Your key: <code>{{key}}</code></p>'
-        />
+        <p className="text-xs text-muted-foreground">
+          Substituted into <code className="font-mono">{`{{supportEmail}}`}</code>{" "}
+          at send time. Falls back to <code>SUPPORT_EMAIL</code> from env when
+          empty. The default English email template is created automatically;
+          you can edit it or add more languages on the next page.
+        </p>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
-      <Button type="submit" disabled={pending}>
-        {pending ? "Creating…" : "Create product"}
+      <Button type="submit" disabled={busy}>
+        {busy && <Spinner />}
+        {busy ? "Creating…" : "Create product"}
       </Button>
     </form>
   );

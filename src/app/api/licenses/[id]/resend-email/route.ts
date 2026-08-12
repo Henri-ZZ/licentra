@@ -2,13 +2,15 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getSessionEmail } from "@/lib/auth";
 import {
-  DEFAULT_EMAIL_BODY_HTML,
-  DEFAULT_EMAIL_SUBJECT,
   isResendStubMode,
   sendLicenseEmail,
   stubSendLicenseEmail,
 } from "@/lib/email";
+import { pickTemplate } from "@/lib/locale";
+import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
+
+const FALLBACK_FROM = "Licentra <onboarding@resend.dev>";
 
 /**
  * Re-send the license email for a LicenseKey.
@@ -16,6 +18,10 @@ import { prisma } from "@/lib/prisma";
  * IMPORTANT: the raw key is not stored anywhere. To re-send, the admin
  * must already have a copy (from the original send), or we generate a
  * new key + revoke the old one. v1 implementation: regenerate and revoke.
+ *
+ * Template selection: prefer the customer's `Order.locale` (captured at
+ * Paddle checkout) over the admin's browser locale. Falls back to the
+ * product's `isDefault` template (always `en`).
  */
 export async function POST(
   _request: NextRequest,
@@ -30,7 +36,10 @@ export async function POST(
 
   const license = await prisma.licenseKey.findUnique({
     where: { id },
-    include: { product: true, order: true },
+    include: {
+      product: { include: { templates: true } },
+      order: true,
+    },
   });
   if (!license || !license.product) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -77,25 +86,30 @@ export async function POST(
     },
   });
 
-  // Send the email for the new key.
-  const subject = license.product.emailSubject ?? DEFAULT_EMAIL_SUBJECT;
-  const body = license.product.emailBodyHtml ?? DEFAULT_EMAIL_BODY_HTML;
-  const from =
-    license.product.resendFromAddress ?? "Licentra <onboarding@resend.dev>";
+  // Pick template + resolve fallback chain: per-template → hard-coded Resend
+  // dev default. The product's `en` template is guaranteed by the create +
+  // backfill flows, so reaching the hard-coded default means something went
+  // wrong upstream.
+  const tpl = pickTemplate(license.product.templates, license.order?.locale ?? null);
+  const fromAddress = tpl?.fromAddress ?? FALLBACK_FROM;
+  const subject = tpl?.subject ?? "";
+  const bodyHtml = tpl?.bodyHtml ?? "";
 
   try {
     const send = isResendStubMode() ? stubSendLicenseEmail : sendLicenseEmail;
     await send({
       to: customerEmail,
-      fromAddress: from,
+      fromAddress,
       subject,
-      bodyHtml: body,
+      bodyHtml,
       vars: {
-        key: newRawKey,
+        code: newRawKey,
         productName: license.product.name,
         plan: license.product.plan,
-        licenseId: newLicense.id,
+        orderId: newLicense.id,
+        email: customerEmail,
         maxActivations: license.maxActivations,
+        supportEmail: license.product.supportEmail ?? env.SUPPORT_EMAIL,
       },
     });
     await prisma.licenseKey.update({

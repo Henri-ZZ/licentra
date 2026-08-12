@@ -10,12 +10,14 @@ import {
   type PaddleEvent,
 } from "@/lib/paddle";
 import {
-  DEFAULT_EMAIL_BODY_HTML,
-  DEFAULT_EMAIL_SUBJECT,
   isResendStubMode,
   sendLicenseEmail,
   stubSendLicenseEmail,
 } from "@/lib/email";
+import { extractPaddleLocale, pickTemplate } from "@/lib/locale";
+import { env } from "@/lib/env";
+
+const FALLBACK_FROM = "Licentra <onboarding@resend.dev>";
 
 /**
  * Paddle Billing webhook entry point.
@@ -109,22 +111,35 @@ async function handleTransactionCompleted(event: PaddleEvent) {
   const customerEmail = tx.details?.customer?.email ?? "";
   const grandTotal = tx.details?.totals?.grand_total ?? 0;
   const currency = tx.details?.totals?.currency_code ?? "USD";
+  const paddleLocale = extractPaddleLocale(event);
 
   // Idempotency at the Order level: if we've already saved this transaction,
   // reuse the existing Order/LicenseKey and just retry the email.
   const existingOrder = await prisma.order.findUnique({
     where: { paddleTransactionId: transactionId },
-    include: { licenses: true },
+    include: {
+      licenses: true,
+      product: { include: { templates: true } },
+    },
   });
 
   if (existingOrder) {
     // Same transaction re-delivered (different event_id). Make sure the
     // license key was emailed; if not, retry.
     const license = existingOrder.licenses[0];
-    if (license && !license.emailedAt) {
+    if (license && !license.emailedAt && existingOrder.product) {
+      const tpl = pickTemplate(
+        existingOrder.product.templates,
+        existingOrder.locale
+      );
       await sendLicenseEmailForLicense({
         licenseId: license.id,
-        product,
+        product: {
+          ...existingOrder.product,
+          fromAddress: tpl?.fromAddress ?? FALLBACK_FROM,
+          subject: tpl?.subject ?? "",
+          bodyHtml: tpl?.bodyHtml ?? "",
+        },
         customerEmail,
       });
     }
@@ -137,6 +152,7 @@ async function handleTransactionCompleted(event: PaddleEvent) {
       paddleTransactionId: transactionId,
       paddleCustomerId: tx.customer_id ?? null,
       paddleEmail: customerEmail,
+      locale: paddleLocale,
       productId: product.id,
       amount: grandTotal,
       currency,
@@ -157,9 +173,15 @@ async function handleTransactionCompleted(event: PaddleEvent) {
   });
 
   // Hold the raw key in memory just long enough to send the email.
+  const tpl = pickTemplate(product.templates, paddleLocale);
   await sendLicenseEmailForLicense({
     licenseId: license.id,
-    product,
+    product: {
+      ...product,
+      fromAddress: tpl?.fromAddress ?? FALLBACK_FROM,
+      subject: tpl?.subject ?? "",
+      bodyHtml: tpl?.bodyHtml ?? "",
+    },
     customerEmail,
     rawKeyOverride: rawKey,
   });
@@ -210,22 +232,29 @@ async function findProductByPaddleRef(paddleProductId: string | null) {
         { id: paddleProductId },
       ],
     },
+    include: { templates: true },
   });
 }
 
 interface SendLicenseEmailParams {
   licenseId: string;
-  product: {
-    name: string;
-    slug: string;
-    plan: string;
-    maxActivations: number;
-    emailSubject: string | null;
-    emailBodyHtml: string | null;
-    resendFromAddress: string | null;
-  };
+  product:
+    | (ProductForEmail & {
+        fromAddress: string;
+        subject: string;
+        bodyHtml: string;
+      })
+    | null;
   customerEmail: string;
   rawKeyOverride?: string;
+}
+
+interface ProductForEmail {
+  name: string;
+  slug: string;
+  plan: string;
+  maxActivations: number;
+  supportEmail: string | null;
 }
 
 /**
@@ -265,23 +294,34 @@ async function sendLicenseEmailForLicense(p: SendLicenseEmailParams) {
     return;
   }
 
-  const subject = p.product.emailSubject ?? DEFAULT_EMAIL_SUBJECT;
-  const body = p.product.emailBodyHtml ?? DEFAULT_EMAIL_BODY_HTML;
-  const from = p.product.resendFromAddress ?? "Licentra <onboarding@resend.dev>";
+  if (!p.product) {
+    await prisma.licenseKey.update({
+      where: { id: p.licenseId },
+      data: {
+        emailError: "product missing",
+        emailAttempts: { increment: 1 },
+      },
+    });
+    return;
+  }
+
+  const { subject, bodyHtml, fromAddress } = p.product;
 
   try {
     const send = isResendStubMode() ? stubSendLicenseEmail : sendLicenseEmail;
     await send({
       to: p.customerEmail,
-      fromAddress: from,
+      fromAddress,
       subject,
-      bodyHtml: body,
+      bodyHtml,
       vars: {
-        key: p.rawKeyOverride,
+        code: p.rawKeyOverride,
         productName: p.product.name,
         plan: p.product.plan,
-        licenseId: p.licenseId,
+        orderId: p.licenseId,
+        email: p.customerEmail,
         maxActivations: p.product.maxActivations,
+        supportEmail: p.product.supportEmail ?? env.SUPPORT_EMAIL,
       },
     });
     await prisma.licenseKey.update({
