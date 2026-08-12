@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Product {
+  id                   String       @id @default(cuid())
+  name                 String
+  slug                 String       @unique
+  description          String?
+  plan                 String       @default("standard")
+  paddleProductId      String?      @unique
+  paddlePriceId        String?
+  maxActivations       Int          @default(3)
+  active               Boolean      @default(true)
+
+  // ECDSA P-256 key pair
+  signatureAlgorithm   String       @default("ecdsa-p256")
+  privateKeyEncrypted  String?
+  publicKey            String?
+  publicKeyFingerprint String?      @unique
+
+  // Email template
+  emailSubject         String?
+  emailBodyHtml        String?
+  resendFromAddress    String?
+
+  licenses             LicenseKey[]
+  orders               Order[]
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+}
+
+model LicenseKey {
+  id             String       @id @default(cuid())
+  keyHash        String       @unique
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  orderId        String?
+  order          Order?       @relation(fields: [orderId], references: [id])
+  maxActivations Int
+  revoked        Boolean      @default(false)
+  revokedAt      DateTime?
+  revokedReason  String?
+  notes          String?
+
+  emailedAt      DateTime?
+  emailError     String?
+  emailAttempts  Int          @default(0)
+
+  activations    Activation[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([productId])
+  @@index([orderId])
+}
+
+model Activation {
+  id            String     @id @default(cuid())
+  licenseKeyId  String
+  licenseKey    LicenseKey @relation(fields: [licenseKeyId], references: [id], onDelete: Cascade)
+  fingerprint   String
+  label         String?
+  ipAddress     String?
+  userAgent     String?
+  lastCheckedAt DateTime   @default(now())
+  createdAt     DateTime   @default(now())
+
+  @@unique([licenseKeyId, fingerprint])
+  @@index([licenseKeyId])
+}
+
+model Order {
+  id                  String       @id @default(cuid())
+  paddleTransactionId String       @unique
+  paddleCustomerId    String?
+  paddleEmail         String?
+  productId           String?
+  product             Product?     @relation(fields: [productId], references: [id])
+  amount              Int
+  currency            String
+  status              String
+  rawPayload          Json
+  licenses            LicenseKey[]
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([paddleEmail])
+}
+
+model WebhookEvent {
+  id            String   @id @default(cuid())
+  paddleEventId String   @unique
+  eventType     String
+  processed     Boolean  @default(false)
+  payload       Json
+  error         String?
+  receivedAt    DateTime @default(now())
+}
