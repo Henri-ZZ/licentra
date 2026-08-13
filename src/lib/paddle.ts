@@ -104,7 +104,8 @@ export interface PaddleTransactionCompleted {
     } | null;
     details?: {
       totals?: {
-        grand_total?: number;
+        // Paddle sends money as strings in minor units (e.g. "1920" cents).
+        grand_total?: string;
         currency_code?: string;
       };
       customer?: {
@@ -153,4 +154,46 @@ export const REFUNDED_STATUSES = new Set([
 
 export function isRefundedStatus(status: string): boolean {
   return REFUNDED_STATUSES.has(status.toLowerCase());
+}
+
+// ---------------------------------------------------------------------------
+// Paddle API (customer lookup)
+// ---------------------------------------------------------------------------
+
+export function getPaddleApiBaseUrl(): string {
+  // Paddle sandbox API keys contain "_sdbx"; live keys do not.
+  return env.PADDLE_API_KEY.includes("_sdbx")
+    ? "https://sandbox-api.paddle.com"
+    : "https://api.paddle.com";
+}
+
+export interface PaddleCustomer {
+  id: string;
+  email: string;
+  name?: string | null;
+  [k: string]: unknown;
+}
+
+/**
+ * Fetches a customer's email from the Paddle API by customer_id. Returns null
+ * when the customer is missing or has no email — callers treat null as fatal
+ * because email is the only delivery channel for license keys.
+ */
+export async function fetchCustomerEmail(
+  customerId: string | null | undefined
+): Promise<string | null> {
+  if (!customerId) return null;
+  const url = `${getPaddleApiBaseUrl()}/customers/${customerId}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${env.PADDLE_API_KEY}` },
+    cache: "no-store",
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(
+      `Paddle API GET /customers/${customerId} failed with ${res.status}`
+    );
+  }
+  const json = (await res.json()) as { data?: PaddleCustomer };
+  return json.data?.email?.trim() || null;
 }

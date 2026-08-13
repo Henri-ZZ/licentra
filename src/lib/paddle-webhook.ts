@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { env } from "@/lib/env";
 import {
+  fetchCustomerEmail,
   isCompletedTransaction,
   isRefundedStatus,
   isUpdatedTransaction,
@@ -31,7 +32,9 @@ export const FALLBACK_FROM = "Licentra <onboarding@resend.dev>";
  *   3. Reject if event_type != expectedEventType (Paddle will keep retrying,
  *      which is what you want when the dashboard is misconfigured to point
  *      the wrong URL at this slot — the failure surfaces in Paddle's UI).
- *   4. Insert into WebhookEvent (unique on event_id; duplicate → `{ ok: true, duplicate: true }`).
+ *   4. Idempotency guard: return `{ ok: true, duplicate: true }` only if a
+ *      prior delivery already set processed=true. If a previous attempt
+ *      failed (processed=false), re-run the handler so the retry completes.
  *   5. Run the handler.
  *   6. Mark WebhookEvent.processed = true, or .processed = false + error.
  *   7. Return 200 on success; 500 on handler failure so Paddle retries.
@@ -69,22 +72,26 @@ export async function processWebhookEvent<T extends PaddleEvent>(opts: {
     );
   }
 
-  // Idempotent: short-circuit if we've already processed this event.
-  const existing = await prisma.webhookEvent.findUnique({
+  // Idempotency: skip only if a previous delivery already SUCCEEDED. If a
+  // prior attempt failed (processed=false), re-run the handler so Paddle's
+  // retry can actually finish the work. The handler is itself idempotent at
+  // the Order level (paddleTransactionId unique), so re-running is safe.
+  let row = await prisma.webhookEvent.findUnique({
     where: { paddleEventId: event.event_id },
   });
-  if (existing) {
+  if (row?.processed) {
     return NextResponse.json({ ok: true, duplicate: true });
   }
-
-  const row = await prisma.webhookEvent.create({
-    data: {
-      paddleEventId: event.event_id,
-      eventType: event.event_type,
-      payload: event as unknown as object,
-      processed: false,
-    },
-  });
+  if (!row) {
+    row = await prisma.webhookEvent.create({
+      data: {
+        paddleEventId: event.event_id,
+        eventType: event.event_type,
+        payload: event as unknown as object,
+        processed: false,
+      },
+    });
+  }
 
   try {
     if (!typeGuard(event)) {
@@ -138,8 +145,20 @@ export async function handleTransactionCompleted(event: PaddleEvent) {
   }
 
   const transactionId = tx.id;
-  const customerEmail = tx.details?.customer?.email ?? "";
-  const grandTotal = tx.details?.totals?.grand_total ?? 0;
+  const customerId = tx.customer_id ?? null;
+  // The webhook payload doesn't carry the customer's email. Fetch it from the
+  // Paddle API by customer_id — email is the only delivery channel for the
+  // license, so fail fast (before creating any Order/LicenseKey) when we
+  // can't resolve it.
+  const customerEmail = await fetchCustomerEmail(customerId);
+  if (!customerEmail) {
+    throw new Error(
+      `customer ${customerId ?? "?"} has no email in Paddle; cannot deliver license`
+    );
+  }
+  // Paddle sends money as strings in minor units (e.g. "1920" = 19.20).
+  // Order.amount is Int, so parse before writing.
+  const grandTotal = parseInt(tx.details?.totals?.grand_total ?? "0", 10) || 0;
   const currency = tx.details?.totals?.currency_code ?? "USD";
   const paddleLocale = extractPaddleLocale(event);
 
@@ -181,7 +200,7 @@ export async function handleTransactionCompleted(event: PaddleEvent) {
   const order = await prisma.order.create({
     data: {
       paddleTransactionId: transactionId,
-      paddleCustomerId: tx.customer_id ?? null,
+      paddleCustomerId: customerId,
       paddleEmail: customerEmail,
       locale: paddleLocale,
       productId: product.id,

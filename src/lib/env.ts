@@ -38,6 +38,10 @@ const envSchema = z.object({
     .string()
     .min(1)
     .default("pdl_ntfk_dev_secret_replace_me"),
+  PADDLE_API_KEY: z
+    .string()
+    .min(1)
+    .default("pdl_sdbx_replace_me"),
 
   // --- Resend ---
   RESEND_API_KEY: z.string().min(1).default("re_dev_replace_me"),
