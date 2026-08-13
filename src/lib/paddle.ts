@@ -69,9 +69,17 @@ export interface PaddleCustomData {
 }
 
 export interface PaddleTransactionItem {
-  product_id: string;
+  // Paddle nests the product reference under `price.product_id` in the
+  // transaction.completed payload (e.g. `items[0].price.product_id`).
+  // Keep a flat `product_id` too as a defensive fallback for other shapes.
+  product_id?: string;
   price_id?: string;
   quantity?: number;
+  price?: {
+    id: string;
+    product_id: string;
+    [k: string]: unknown;
+  };
 }
 
 export interface PaddleTransactionCompleted {

@@ -118,7 +118,10 @@ export async function handleTransactionCompleted(event: PaddleEvent) {
   const tx = event.data;
 
   const productIdSlug =
-    tx.custom_data?.productId ?? tx.items?.[0]?.product_id ?? null;
+    tx.custom_data?.productId ??
+    tx.items?.[0]?.price?.product_id ??
+    tx.items?.[0]?.product_id ??
+    null;
 
   const product = await findProductByPaddleRef(productIdSlug);
   if (!product) {
