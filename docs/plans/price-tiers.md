@@ -104,7 +104,7 @@ await prisma.licenseKey.create({
 });
 ```
 
-`LicenseKey` 永远带 `plan`/`expiresAt` 快照；`payload.plan` / `payload.expires_at` 也直接读这两个字段，不再到 `Product` 上取。
+`LicenseKey` 永远带 `plan`/`expiresAt` 快照；`payload.plan` / `payload.license_expires_at` 也直接读这两个字段，不再到 `Product` 上取。
 
 ### 3.3 退款 / 吊销
 
@@ -191,4 +191,4 @@ POST `/api/products` 的 body 现在带 `tiers: [{ plan, paddlePriceId }]`；`ex
 - **`expiresInDays` 可编辑**：放开 schema 限制，但不是「UI 上随便改」，而是「重新创建 tier + 迁移老 license」。比较适合走 API：DELETE 旧 tier（如果还有 license 就拒绝）→ POST 新 tier → 引导用户迁移 license。
 - **`paddlePriceId` 真正起作用**：`pickTierForOrder` 改成按 items 里的 `price_id` 匹配 (`tier.paddlePriceId === items[0].price_id`)，匹配失败 fallback 到 `createdAt asc`。
 - **多 tier 同时上架**：暂未支持，老的「多 plan 只能分多个 Paddle Product」路径继续走。
-- **客户端 payload**：当前 `payload.expires_at` 只在客户端做展示用；真正在线校验仍是 `validate` / `check-in` 查 DB。但将来如果需要"签名时刻起算 24h check-in 失效"逻辑，expireAt 字段已经准备好。
+- **客户端 payload**：当前 `payload.license_expires_at` 只在客户端做展示用；真正在线校验仍是 `activate` / `check-in` 查 DB。但将来如果需要"签名时刻起算 24h check-in 失效"逻辑，expireAt 字段已经准备好。

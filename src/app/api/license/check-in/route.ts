@@ -11,11 +11,7 @@ import { prisma } from "@/lib/prisma";
 const bodySchema = z.object({
   key: z.string().min(1),
   fingerprint: z.string().min(1),
-  client_version: z.string().max(40).optional(),
-  platform: z.string().max(40).optional(),
 });
-
-const NEXT_CHECK_IN_SECONDS = 60 * 60 * 24; // 24h
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -70,16 +66,5 @@ export async function POST(request: NextRequest) {
     data: { lastCheckedAt: new Date() },
   });
 
-  // client_version / platform are intentionally NOT persisted to DB — they
-  // ship here only for client-side telemetry hooks. Log if useful.
-  if (parsed.data.client_version || parsed.data.platform) {
-    console.info(
-      `[check-in] license=${license.id} client=${parsed.data.client_version ?? "?"} platform=${parsed.data.platform ?? "?"}`
-    );
-  }
-
-  return NextResponse.json({
-    ...buildLicenseResponse(license),
-    next_check_in_seconds: NEXT_CHECK_IN_SECONDS,
-  });
+  return NextResponse.json(buildLicenseResponse(license));
 }

@@ -27,41 +27,6 @@ export const openApiSpec = {
     { name: "Webhook", description: "Called by Paddle" },
   ],
   paths: {
-    "/api/license/validate": {
-      post: {
-        tags: ["License"],
-        summary: "Validate a license key",
-        description:
-          "Lightweight check that a key exists and is not revoked. " +
-          "Does NOT register a fingerprint — use /activate for that.",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/ValidateRequest" },
-              example: { key: "ABCD-1234-EFGH-5678" },
-            },
-          },
-        },
-        responses: {
-          "200": {
-            description: "Either signed payload or invalid state",
-            content: {
-              "application/json": {
-                schema: {
-                  oneOf: [
-                    { $ref: "#/components/schemas/LicenseSignedResponse" },
-                    { $ref: "#/components/schemas/LicenseInvalidResponse" },
-                  ],
-                },
-              },
-            },
-          },
-          "400": { $ref: "#/components/responses/BadRequest" },
-        },
-      },
-    },
-
     "/api/license/activate": {
       post: {
         tags: ["License"],
@@ -107,68 +72,15 @@ export const openApiSpec = {
         tags: ["License"],
         summary: "Heartbeat from running product",
         description:
-          "Confirms the fingerprint is still bound. Returns `next_check_in_seconds` so the " +
-          "client can sync its heartbeat to 24h. If the fingerprint was evicted (e.g. another " +
-          "machine displaced it), returns `activation_evicted` so the client can prompt re-activation.",
+          "Confirms the fingerprint is still bound. The client re-checks when " +
+          "`payload.valid_until` has passed. If the fingerprint was evicted " +
+          "(e.g. another machine displaced it), returns `activation_evicted` so " +
+          "the client can prompt re-activation.",
         requestBody: {
           required: true,
           content: {
             "application/json": {
               schema: { $ref: "#/components/schemas/CheckInRequest" },
-              example: {
-                key: "ABCD-1234-EFGH-5678",
-                fingerprint: "mac-abc123def",
-                client_version: "1.4.2",
-                platform: "macos",
-              },
-            },
-          },
-        },
-        responses: {
-          "200": {
-            description: "Signed payload or invalid state, plus heartbeat interval",
-            content: {
-              "application/json": {
-                schema: {
-                  oneOf: [
-                    {
-                      allOf: [
-                        { $ref: "#/components/schemas/LicenseSignedResponse" },
-                        {
-                          type: "object",
-                          properties: {
-                            next_check_in_seconds: {
-                              type: "integer",
-                              const: 86400,
-                            },
-                          },
-                          required: ["next_check_in_seconds"],
-                        },
-                      ],
-                    },
-                    { $ref: "#/components/schemas/LicenseInvalidResponse" },
-                  ],
-                },
-              },
-            },
-          },
-          "400": { $ref: "#/components/responses/BadRequest" },
-        },
-      },
-    },
-
-    "/api/license/deactivate": {
-      post: {
-        tags: ["License"],
-        summary: "Unbind a fingerprint from a license",
-        description:
-          "Idempotent. Removing an already-removed fingerprint is not an error. " +
-          "Does NOT revoke the license itself — only the activation row is removed.",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/DeactivateRequest" },
               example: {
                 key: "ABCD-1234-EFGH-5678",
                 fingerprint: "mac-abc123def",
@@ -423,13 +335,6 @@ export const openApiSpec = {
         },
       },
 
-      ValidateRequest: {
-        type: "object",
-        required: ["key"],
-        properties: {
-          key: { type: "string", minLength: 1, description: "Customer license key" },
-        },
-      },
       ActivateRequest: {
         type: "object",
         required: ["key", "fingerprint"],
@@ -445,30 +350,28 @@ export const openApiSpec = {
         properties: {
           key: { type: "string", minLength: 1 },
           fingerprint: { type: "string", minLength: 1 },
-          client_version: { type: "string", maxLength: 40, description: "Logged for telemetry only" },
-          platform: { type: "string", maxLength: 40, description: "Logged for telemetry only" },
         },
       },
-      DeactivateRequest: {
-        type: "object",
-        required: ["key", "fingerprint"],
-        properties: {
-          key: { type: "string", minLength: 1 },
-          fingerprint: { type: "string", minLength: 1 },
-        },
-      },
-
       LicensePayload: {
         type: "object",
-        required: ["product", "plan", "license_id", "expires_at"],
+        required: ["product", "plan", "license_id", "license_expires_at", "valid_until"],
         properties: {
           product: { type: "string", description: "Product slug" },
           plan: { type: "string", description: "Plan name (e.g. 'standard', 'lifetime')" },
           license_id: { type: "string", description: "License cuid" },
-          expires_at: {
+          license_expires_at: {
             type: ["string", "null"],
             format: "date-time",
-            description: "Always null in v1 — reserved for future expiry support.",
+            description:
+              "When the license entitlement expires (null = lifetime). " +
+              "Business-level subscription expiry — NOT the signature window.",
+          },
+          valid_until: {
+            type: "string",
+            format: "date-time",
+            description:
+              "Signature expiry (ISO). = issue time + product.signatureTtlSeconds. " +
+              "The client must re-verify online once now >= valid_until.",
           },
         },
       },

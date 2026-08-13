@@ -9,7 +9,7 @@ License key 销售与激活管理平台：售卖侧接 Paddle、签发 Key 并�
 Licentra 是一个 **License key 服务端**（不是客户的桌面应用本体）。它做三件事：
 
 1. **卖 Key** — 客户在 Paddle 付款，Licentra 收到 webhook，签发一个 Key，通过邮件（Resend）一次性投递。
-2. **用 Key** — 客户的桌面/移动应用调用 Licentra 的 License API（validate / activate / check-in / deactivate），Licentra 返回一段**用产品 ECDSA 私钥签名的 payload**。客户应用**离线本地验签**（公钥嵌入客户自己的代码里），不必每次都打网络。
+2. **用 Key** — 客户的桌面/移动应用调用 Licentra 的 License API（activate / check-in），Licentra 返回一段**用产品 ECDSA 私钥签名的 payload**。客户应用**离线本地验签**（公钥嵌入客户自己的代码里），不必每次都打网络。
 3. **管 Key** — 运营者登录 Dashboard：创建产品、生成每产品的密钥对、查看 License、吊销、重发邮件、查订单流水。
 
 ---
@@ -150,9 +150,9 @@ WebhookEvent 写入 → handleTransactionUpdated
   ├─ 有缓存 payload+signature+publicKey?
   │   └─ 是 → 本地 ECDSA 验证
   │       ├─ 失败 → 弹"无效"提示, 清缓存, 重新激活流程
-  │       └─ 成功 → 看距离上次 check-in 的时间
-  │           ├─ < next_check_in_seconds → 直接进入应用
-  │           └─ ≥ → 调 /api/license/check-in
+  │       └─ 成功 → 看 valid_until 是否已过
+  │           ├─ 未过期 → 直接进入应用
+  │           └─ 已过期 → 调 /api/license/check-in 刷新签名
   │
   └─ 无缓存 / 首次启动 → POST /api/license/activate
       { key, fingerprint, label }
@@ -168,10 +168,8 @@ WebhookEvent 写入 → handleTransactionUpdated
 
 | 端点                           | 入参                                               | 行为                                              | 副作用           |
 | ------------------------------ | -------------------------------------------------- | ------------------------------------------------- | ---------------- |
-| `POST /api/license/validate`   | `{ key }`                                          | 按 hash 查 license，返回签名 payload              | 无               |
 | `POST /api/license/activate`   | `{ key, fingerprint, label? }`                     | 同 fp 刷新 / 新 fp 注册 / 满则 FIFO 踢出          | 写 Activation    |
-| `POST /api/license/check-in`   | `{ key, fingerprint, client_version?, platform? }` | 验证 license + 验证 fp 仍绑定，刷新 lastCheckedAt | 写 lastCheckedAt |
-| `POST /api/license/deactivate` | `{ key, fingerprint }`                             | 删 Activation（幂等）                             | 删 Activation    |
+| `POST /api/license/check-in`   | `{ key, fingerprint }`                             | 验证 license + 验证 fp 仍绑定，刷新 lastCheckedAt | 写 lastCheckedAt |
 
 License API **不做鉴权**（key 即凭证）。`/api/webhook/paddle` 用 HMAC 验签；`/api/products/*` 和 `/api/licenses/*`（管理用）走 dashboard session。
 
@@ -202,7 +200,7 @@ pnpm dev                        # 起 http://localhost:3000
    - 创建一个 Product + Price
    - 复制 `paddleProductId` 和 `paddlePriceId`，填回 Licentra 产品编辑页
    - 在 webhook 配置里：
-     - URL = `https://YOUR-DOMAIN/api/webhook/paddle`
+     - URL = `https://YOUR-DOMAIN/api/webhook/paddle-transaction-completed`（completed）/ `.../paddle-transaction-updated`（updated）
      - 事件 = `transaction.completed` + `transaction.updated`
      - **Notification secret** = 填到 Licentra 的 `PADDLE_WEBHOOK_SECRET`
 4. **Paddle checkout 集成**：`custom_data.productId` 传 Licentra 的 `Product.id`（不是 Paddle product_id）。这样 webhoook 解析最可靠。
@@ -261,7 +259,7 @@ pnpm tsx scripts/smoke-sign.ts
 | License API 鉴权 | **无**（key 即凭证）。安全模型：16 字符 ≈95 bit 熵 + HTTPS + 邮件渠道安全                             |
 | 产品私钥         | AES-256-GCM 加密，`LICENSE_MASTER_KEY` 是 32-byte hex（64 chars）                                     |
 | 设备指纹         | 入库前 SHA-256；DB 泄漏不暴露原始设备标识                                                             |
-| 签名序列化       | `JSON.stringify(payload)` 键顺序必须固定：`product → plan → license_id → expires_at`。改动 = 协议破坏 |
+| 签名序列化       | `JSON.stringify(payload)` 键顺序必须固定：`product → plan → license_id → license_expires_at → valid_until`。改动 = 协议破坏 |
 | 主密钥泄漏       | ⇒ 所有产品私钥可解 ⇒ 所有 license 可伪造。**生产环境必须用 KMS 或 secret manager**                    |
 
 ### 不在 v1 范围
@@ -295,7 +293,7 @@ licentra/
 │   │   │   └── orders/                  # Paddle 订单流水
 │   │   ├── api/
 │   │   │   ├── auth/{login,logout}/     # 鉴权
-│   │   │   ├── license/{validate,activate,check-in,deactivate}/
+│   │   │   ├── license/{activate,check-in}/
 │   │   │   ├── webhook/paddle/          # Paddle 入口
 │   │   │   ├── products/                # 管理 CRUD + generate-key
 │   │   │   └── licenses/[id]/{revoke,resend-email}/
@@ -329,10 +327,10 @@ licentra/
 
 ## 8. API 速查
 
-### `POST /api/license/validate`
+### `POST /api/license/activate`
 
 ```json
-请求: { "key": "K3PQ-W7HN-8YJZ-V9D2" }
+请求: { "key": "...", "fingerprint": "<设备指纹原文>", "label": "MacBook Pro" }
 成功响应:
 {
   "valid": true,
@@ -340,32 +338,20 @@ licentra/
     "product": "stealth-browser-assistant",
     "plan": "pro",
     "license_id": "abc123",
-    "expires_at": null
+    "license_expires_at": null,
+    "valid_until": "2026-08-14T16:00:00.000Z"
   },
   "signature": "MEUCIQ..."
 }
-失败响应: { "valid": false, "reason": "license_not_found" | "license_revoked" | "license_refunded" | "activation_evicted" }
-```
-
-### `POST /api/license/activate`
-
-```json
-请求: { "key": "...", "fingerprint": "<设备指纹原文>", "label": "MacBook Pro" }
-成功响应: 同 validate
+失败响应: { "valid": false, "reason": "license_not_found" | "license_revoked" | "license_refunded" }
 ```
 
 ### `POST /api/license/check-in`
 
 ```json
-请求: { "key": "...", "fingerprint": "...", "client_version": "1.2.3", "platform": "macos" }
-成功响应: { ...validate 响应, "next_check_in_seconds": 86400 }
-```
-
-### `POST /api/license/deactivate`
-
-```json
 请求: { "key": "...", "fingerprint": "..." }
-成功响应: 同 validate
+成功响应: 同 activate
+失败响应: 同 activate，另加 "activation_evicted"（指纹被踢出）
 ```
 
 ### `POST /api/webhook/paddle`

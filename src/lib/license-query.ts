@@ -37,11 +37,14 @@ export function buildLicensePayload(
   // issue time (see paddle-webhook.handleTransactionCompleted). They're
   // immutable from the customer's perspective even if the tier's plan
   // name is later edited — that's the point of the snapshot.
+  const signedAt = new Date();
+  const ttlSeconds = license.product.signatureTtlSeconds;
   return {
     product: license.product.slug,
     plan: license.plan ?? "",
     license_id: license.id,
-    expires_at: license.expiresAt ? license.expiresAt.toISOString() : null,
+    license_expires_at: license.expiresAt ? license.expiresAt.toISOString() : null,
+    valid_until: new Date(signedAt.getTime() + ttlSeconds * 1000).toISOString(),
   };
 }
 

@@ -9,6 +9,7 @@ const updateSchema = z.object({
   description: z.string().max(2000).optional().nullable(),
   paddleProductId: z.string().max(120).optional().nullable(),
   maxActivations: z.number().int().min(1).max(100).optional(),
+  signatureTtlSeconds: z.number().int().min(60).max(31536000).optional(),
   active: z.boolean().optional(),
   supportEmail: z.string().email().max(200).optional().nullable(),
   // Plan / priceId moved to /tiers endpoints. See docs/plans/price-tiers.md.

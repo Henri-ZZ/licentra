@@ -30,6 +30,7 @@ export function ProductForm() {
         description: String(fd.get("description") ?? "") || null,
         paddleProductId: String(fd.get("paddleProductId") ?? "") || null,
         maxActivations: Number(fd.get("maxActivations") ?? 3),
+        signatureTtlSeconds: Number(fd.get("signatureTtlSeconds") ?? 86400),
         active: fd.get("active") === "on",
         supportEmail: String(fd.get("supportEmail") ?? "") || null,
         // Always seed one tier. With paddlePriceId optional so admin can
@@ -113,6 +114,17 @@ export function ProductForm() {
             max={100}
             defaultValue={3}
           />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="signatureTtlSeconds">Signature validity (s)</Label>
+          <Input
+            id="signatureTtlSeconds"
+            name="signatureTtlSeconds"
+            type="number"
+            min={60}
+            defaultValue={86400}
+          />
+          <p className="text-xs text-muted-foreground">86400 = 24h</p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="active">Active</Label>

@@ -28,6 +28,7 @@ const productSchema = z.object({
   description: z.string().max(2000).optional().nullable(),
   paddleProductId: z.string().max(120).optional().nullable(),
   maxActivations: z.number().int().min(1).max(100).default(3),
+  signatureTtlSeconds: z.number().int().min(60).max(31536000).default(86400),
   active: z.boolean().default(true),
   supportEmail: z.string().email().max(200).optional().nullable(),
   // The first tier is created atomically with the product so the row is
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest) {
           description: parsed.data.description,
           paddleProductId: parsed.data.paddleProductId,
           maxActivations: parsed.data.maxActivations,
+          signatureTtlSeconds: parsed.data.signatureTtlSeconds,
           active: parsed.data.active,
           supportEmail: parsed.data.supportEmail,
         },

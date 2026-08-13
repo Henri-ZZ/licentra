@@ -51,8 +51,9 @@ pnpm prisma db push
 
 1. Create the product(s) and price(s) in your Paddle dashboard.
 2. Set `PADDLE_WEBHOOK_SECRET` (from Developer tools → Notifications).
-3. In Paddle, point the webhook at `https://YOUR-DOMAIN/api/webhook/paddle`
-   and subscribe to `transaction.completed` and `transaction.updated`.
+3. In Paddle, point each webhook at its dedicated URL and subscribe:
+   - `transaction.completed` → `https://YOUR-DOMAIN/api/webhook/paddle-transaction-completed`
+   - `transaction.updated` → `https://YOUR-DOMAIN/api/webhook/paddle-transaction-updated`
 4. In Licentra, create a Product and paste the Paddle product/price IDs.
 
 The webhook handler also reads `custom_data.productId` from Paddle
@@ -73,14 +74,6 @@ Licentra falls back to a console-stub when `RESEND_API_KEY` starts with
 All license endpoints accept and return JSON. The license key itself is
 the credential — there is no separate API key.
 
-### `POST /api/license/validate`
-
-```json
-{ "key": "K3PQ-W7HN-8YJZ-V9D2" }
-```
-
-Returns either the signed payload or `{ "valid": false }`.
-
 ### `POST /api/license/activate`
 
 ```json
@@ -100,9 +93,7 @@ license is at its `maxActivations`, the **oldest** activation is evicted
 ```json
 {
   "key": "...",
-  "fingerprint": "...",
-  "client_version": "1.2.3",
-  "platform": "macos"
+  "fingerprint": "..."
 }
 ```
 
@@ -110,16 +101,8 @@ Refreshes `lastCheckedAt` and returns the signed payload. Returns
 `{valid: false, reason}` if the license has been revoked, refunded, or
 this fingerprint was evicted.
 
-Always run this every 24–72 hours (server tells you the next interval in
-`next_check_in_seconds`).
-
-### `POST /api/license/deactivate`
-
-```json
-{ "key": "...", "fingerprint": "..." }
-```
-
-Removes the fingerprint binding. Idempotent.
+The client re-checks whenever the previous signature's `payload.valid_until`
+has passed (default 24h).
 
 ## Signed payload
 
@@ -132,7 +115,8 @@ Success response shape:
     "product": "stealth-browser-assistant",
     "plan": "pro",
     "license_id": "abc123",
-    "expires_at": null
+    "license_expires_at": null,
+    "valid_until": "2026-08-14T16:00:00.000Z"
   },
   "signature": "MEUCIQ..."
 }
@@ -170,7 +154,7 @@ function verifyLicense(response) {
 
 > **JSON serialisation caveat**: `JSON.stringify` must produce identical
 > bytes on both server and client. V8 preserves insertion order, so the
-> server-side key order (`product → plan → license_id → expires_at`) is
+> server-side key order (`product → plan → license_id → license_expires_at → valid_until`) is
 > what determines the canonical bytes.
 
 ## Security model

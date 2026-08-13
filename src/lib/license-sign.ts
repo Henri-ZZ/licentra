@@ -13,7 +13,8 @@ import { decrypt } from "@/lib/crypto";
  *       "product": "stealth-browser-assistant",
  *       "plan": "pro",
  *       "license_id": "abc123",
- *       "expires_at": null
+ *       "license_expires_at": null,
+ *       "valid_until": "2026-08-14T16:00:00.000Z"
  *     },
  *     "signature": "MEUCIQ..."
  *   }
@@ -26,7 +27,15 @@ export interface LicensePayload {
   product: string;
   plan: string;
   license_id: string;
-  expires_at: string | null;
+  // When the license entitlement itself expires (null = lifetime). This is
+  // the business-level subscription expiry — NOT the signature freshness
+  // window (that's `valid_until`).
+  license_expires_at: string | null;
+  // Signature valid-until (ISO) = issue time + product.signatureTtlSeconds.
+  // The client verifies the signature, then checks `now < valid_until`;
+  // once past it, it must go back online to re-verify (so refunds /
+  // revocations take effect).
+  valid_until: string;
 }
 
 export interface LicenseSignedResponse {

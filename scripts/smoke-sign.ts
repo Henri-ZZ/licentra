@@ -36,11 +36,13 @@ async function main() {
   };
 
   const licenseId = `lic_${Date.now().toString(36)}`;
+  const signedAt = new Date();
   const payload = {
     product: product.slug,
     plan: product.plan,
     license_id: licenseId,
-    expires_at: null,
+    license_expires_at: null,
+    valid_until: new Date(signedAt.getTime() + 24 * 60 * 60 * 1000).toISOString(),
   };
 
   const response = buildSignedResponse(

@@ -13,6 +13,9 @@ model Product {
   description          String?
   paddleProductId      String?      @unique
   maxActivations       Int          @default(3)
+  // 签名有效时长（秒）。客户端用公钥验签后，若签名时间距今超过此时长，
+  // 需重新联网验证。默认 86400 = 24 小时。
+  signatureTtlSeconds  Int          @default(86400)
   active               Boolean      @default(true)
 
   // ECDSA P-256 key pair

@@ -27,6 +27,7 @@ export function ProductEditForm({ product }: { product: Product }) {
         description: String(fd.get("description") ?? "") || null,
         paddleProductId: String(fd.get("paddleProductId") ?? "") || null,
         maxActivations: Number(fd.get("maxActivations") ?? 3),
+        signatureTtlSeconds: Number(fd.get("signatureTtlSeconds") ?? 86400),
         active: fd.get("active") === "on",
         supportEmail: String(fd.get("supportEmail") ?? "") || null,
         // plan / priceId live on PriceTier rows now — managed in the
@@ -76,17 +77,31 @@ export function ProductEditForm({ product }: { product: Product }) {
           defaultValue={product.description ?? ""}
         />
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="maxActivations">Max activations</Label>
-        <Input
-          id="maxActivations"
-          name="maxActivations"
-          type="number"
-          min={1}
-          max={100}
-          defaultValue={product.maxActivations}
-          className="max-w-xs"
-        />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="maxActivations">Max activations</Label>
+          <Input
+            id="maxActivations"
+            name="maxActivations"
+            type="number"
+            min={1}
+            max={100}
+            defaultValue={product.maxActivations}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="signatureTtlSeconds">Signature validity (seconds)</Label>
+          <Input
+            id="signatureTtlSeconds"
+            name="signatureTtlSeconds"
+            type="number"
+            min={60}
+            defaultValue={product.signatureTtlSeconds}
+          />
+          <p className="text-xs text-muted-foreground">
+            How long a signed payload stays valid offline. 86400 = 24h.
+          </p>
+        </div>
       </div>
       <div className="space-y-2">
         <Label>Status</Label>

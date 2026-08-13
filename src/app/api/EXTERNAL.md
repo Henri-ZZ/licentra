@@ -27,7 +27,7 @@ embeds the public key at build time and uses it to verify the
 
 ## Algorithm
 
-All four endpoints take a license key (the customer's copy, e.g.
+Both endpoints take a license key (the customer's copy, e.g.
 `ABCD-1234-EFGH-5678`) and return a signed payload:
 
 ```json
@@ -37,7 +37,8 @@ All four endpoints take a license key (the customer's copy, e.g.
     "product": "stealth-browser-assistant",
     "plan": "standard",
     "license_id": "cmsabc123…",
-    "expires_at": null
+    "license_expires_at": null,
+    "valid_until": "2026-08-14T16:00:00.000Z"
   },
   "signature": "base64-encoded ECDSA-DER signature over JSON.stringify(payload)"
 }
@@ -47,35 +48,21 @@ The client should:
 1. Verify `payload.product` matches the bundle's expected product slug.
 2. Verify `signature` against the embedded public key using
    ECDSA-P-256 / SHA-256.
-3. Treat `valid: false` as "deny" regardless of `reason`.
+3. Check `now < payload.valid_until`. Once past it, the signature is
+   stale — go back online to re-verify (so refunds / revocations take
+   effect).
+4. Treat `valid: false` as "deny" regardless of `reason`.
 
-**Note on `expires_at`**: always `null` in v1. Reserved for future
-expiry support.
+**Note on `license_expires_at`**: always `null` in v1. Reserved for future
+subscription-expiry support. It is the license's business-level expiry,
+distinct from `valid_until` (the signature freshness window).
+
+**Signature validity window**: `valid_until` = issue time +
+`product.signatureTtlSeconds` (default 86400 = 24h). While
+`now < valid_until`, the client can trust the offline signature; after
+that it must hit an endpoint again to fetch a fresh one.
 
 ---
-
-### `POST /api/license/validate`
-
-Lightweight check that a key exists and is not revoked/refunded. Does
-**not** register a fingerprint. Use this for "is this key registered?"
-checks that don't require an activation.
-
-**Request body**
-```json
-{ "key": "ABCD-1234-EFGH-5678" }
-```
-
-**Responses**
-| Status | Body                                                                                                 | Notes                              |
-|--------|------------------------------------------------------------------------------------------------------|------------------------------------|
-| 200    | `{ valid: true, payload, signature }` OR `{ valid: false, reason: "license_not_found" }`            | Always 200 — `valid` is the signal |
-| 400    | `{ "error": "invalid_json" }`                                                                        |                                    |
-| 400    | `{ "error": "invalid_payload" }`                                                                     |                                    |
-
-**`reason` values** (when `valid: false`):
-- `license_not_found` — key is unknown to the system
-- `license_revoked` — admin revoked, or product has no signing key yet
-- `license_refunded` — Paddle issued a refund
 
 ### `POST /api/license/activate`
 
@@ -105,8 +92,9 @@ one is created.
 | 200    | `{ valid: true, payload, signature }` OR `{ valid: false, reason }`          |
 | 400    | `{ "error": "invalid_json" }` / `{ "error": "invalid_payload", "details": {…} }` |
 
-**`reason` values**: same as `validate` (no `activation_evicted` here —
-eviction happens silently and the new fingerprint is bound).
+**`reason` values**: `license_not_found`, `license_revoked`,
+`license_refunded` (no `activation_evicted` here — eviction happens
+silently and the new fingerprint is bound).
 
 **Side effects**: writes a row in `Activation` (or updates
 `lastCheckedAt`), captures `IP` from `X-Forwarded-For` and `User-Agent`
@@ -119,41 +107,9 @@ bound. If the fingerprint was evicted (e.g. user reinstalled on another
 machine displacing this one), returns `activation_evicted` so the client
 can prompt re-activation.
 
-Recommended interval: **24 hours** (the server returns
-`next_check_in_seconds: 86400` so the client can sync).
-
-**Request body**
-```json
-{
-  "key": "ABCD-1234-EFGH-5678",
-  "fingerprint": "machine-id-or-hash",
-  "client_version": "1.4.2",
-  "platform": "macos"
-}
-```
-
-| Field           | Type    | Required | Notes                                    |
-|-----------------|---------|----------|------------------------------------------|
-| key             | string  | yes      |                                          |
-| fingerprint     | string  | yes      |                                          |
-| client_version  | string? | no       | ≤ 40 chars; logged for telemetry only     |
-| platform        | string? | no       | ≤ 40 chars; logged for telemetry only     |
-
-**Responses**
-| Status | Body                                                                                                  |
-|--------|-------------------------------------------------------------------------------------------------------|
-| 200    | `{ valid: true, payload, signature, next_check_in_seconds: 86400 }` OR `{ valid: false, reason }`     |
-| 400    | `{ "error": "invalid_json" }` / `{ "error": "invalid_payload", "details": {…} }`                       |
-
-**`reason` values**: `license_not_found`, `license_revoked`,
-`license_refunded`, `activation_evicted` (this fingerprint is no longer
-bound — the user must re-activate).
-
-### `POST /api/license/deactivate`
-
-Unbind a fingerprint from a license. Idempotent (missing fingerprint is
-not an error). Does **not** revoke the license itself — only the
-activation row is removed.
+The client re-checks when the previous signature's `payload.valid_until`
+has passed (default 24h — controlled by the product's
+`signatureTtlSeconds`).
 
 **Request body**
 ```json
@@ -163,11 +119,20 @@ activation row is removed.
 }
 ```
 
+| Field       | Type    | Required | Notes                                    |
+|-------------|---------|----------|------------------------------------------|
+| key         | string  | yes      |                                          |
+| fingerprint | string  | yes      |                                          |
+
 **Responses**
-| Status | Body                                                                        |
-|--------|-----------------------------------------------------------------------------|
+| Status | Body                                                                       |
+|--------|----------------------------------------------------------------------------|
 | 200    | `{ valid: true, payload, signature }` OR `{ valid: false, reason }`        |
-| 400    | `{ "error": "invalid_json" }` / `{ "error": "invalid_payload" }`            |
+| 400    | `{ "error": "invalid_json" }` / `{ "error": "invalid_payload", "details": {…} }` |
+
+**`reason` values**: `license_not_found`, `license_revoked`,
+`license_refunded`, `activation_evicted` (this fingerprint is no longer
+bound — the user must re-activate).
 
 ---
 
