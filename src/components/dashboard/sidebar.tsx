@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpenText, CreditCard, KeySquare, LayoutDashboard, Package } from "lucide-react";
+import {
+  BookOpenText,
+  CreditCard,
+  KeySquare,
+  LayoutDashboard,
+  Package,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -11,7 +17,7 @@ const items = [
   { href: "/dashboard/products", label: "Products", icon: Package },
   { href: "/dashboard/licenses", label: "Licenses", icon: KeySquare },
   { href: "/dashboard/orders", label: "Orders", icon: CreditCard },
-  { href: "/dashboard/api-docs", label: "API 文档", icon: BookOpenText },
+  { href: "/dashboard/api-docs", label: "API Docs", icon: BookOpenText },
 ];
 
 export function DashboardSidebar() {
@@ -33,7 +39,7 @@ export function DashboardSidebar() {
                 "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
                 active
                   ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                  : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
               )}
             >
               <Icon className="size-4" />
