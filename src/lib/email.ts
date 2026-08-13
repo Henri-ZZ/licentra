@@ -64,6 +64,7 @@ export async function sendLicenseEmail(input: SendLicenseEmailInput): Promise<vo
   const { error } = await resend.emails.send({
     from: input.fromAddress,
     to: input.to,
+    replyTo: vars.supportEmail,
     subject,
     html,
   });
