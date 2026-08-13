@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { env } from "@/lib/env";
 import {
-  fetchCustomerEmail,
+  fetchCustomer,
   isCompletedTransaction,
   isRefundedStatus,
   isUpdatedTransaction,
@@ -146,21 +146,24 @@ export async function handleTransactionCompleted(event: PaddleEvent) {
 
   const transactionId = tx.id;
   const customerId = tx.customer_id ?? null;
-  // The webhook payload doesn't carry the customer's email. Fetch it from the
-  // Paddle API by customer_id — email is the only delivery channel for the
-  // license, so fail fast (before creating any Order/LicenseKey) when we
-  // can't resolve it.
-  const customerEmail = await fetchCustomerEmail(customerId);
-  if (!customerEmail) {
+  // The webhook payload doesn't carry the customer's email or locale. Fetch
+  // both from the Paddle API by customer_id — email is the only delivery
+  // channel for the license, so fail fast (before creating any Order/
+  // LicenseKey) when we can't resolve it.
+  const customer = await fetchCustomer(customerId);
+  if (!customer) {
     throw new Error(
       `customer ${customerId ?? "?"} has no email in Paddle; cannot deliver license`
     );
   }
+  const customerEmail = customer.email;
+  // Prefer the customer's own locale (from the API) over the webhook payload,
+  // which usually doesn't include one.
+  const paddleLocale = customer.locale ?? extractPaddleLocale(event);
   // Paddle sends money as strings in minor units (e.g. "1920" = 19.20).
   // Order.amount is Int, so parse before writing.
   const grandTotal = parseInt(tx.details?.totals?.grand_total ?? "0", 10) || 0;
   const currency = tx.details?.totals?.currency_code ?? "USD";
-  const paddleLocale = extractPaddleLocale(event);
 
   // Idempotency at the Order level: if we've already saved this transaction,
   // reuse the existing Order/LicenseKey and just retry the email.

@@ -171,17 +171,25 @@ export interface PaddleCustomer {
   id: string;
   email: string;
   name?: string | null;
+  // Customer's preferred locale (BCP 47, e.g. "zh-CN"). Used to pick the
+  // email template language.
+  locale?: string;
   [k: string]: unknown;
 }
 
+export interface CustomerInfo {
+  email: string;
+  locale: string | null;
+}
+
 /**
- * Fetches a customer's email from the Paddle API by customer_id. Returns null
- * when the customer is missing or has no email — callers treat null as fatal
+ * Fetches a customer from the Paddle API by customer_id. Returns null when
+ * the customer is missing or has no email — callers treat null as fatal
  * because email is the only delivery channel for license keys.
  */
-export async function fetchCustomerEmail(
+export async function fetchCustomer(
   customerId: string | null | undefined
-): Promise<string | null> {
+): Promise<CustomerInfo | null> {
   if (!customerId) return null;
   const url = `${getPaddleApiBaseUrl()}/customers/${customerId}`;
   const res = await fetch(url, {
@@ -195,5 +203,12 @@ export async function fetchCustomerEmail(
     );
   }
   const json = (await res.json()) as { data?: PaddleCustomer };
-  return json.data?.email?.trim() || null;
+  const data = json.data;
+  if (!data) return null;
+  const email = data.email?.trim();
+  if (!email) return null;
+  return {
+    email,
+    locale: data.locale?.trim() || null,
+  };
 }
