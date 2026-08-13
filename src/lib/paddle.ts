@@ -5,7 +5,7 @@ import { env } from "@/lib/env";
 /**
  * Paddle Billing webhook helpers.
  *
- * Signature verification (HMAC-SHA256 over `"${ts}.${rawBody}"`) and a
+ * Signature verification (HMAC-SHA256 over `"${ts}:${rawBody}"`) and a
  * Paddle-event-type dispatcher. We keep the type set intentionally narrow
  * for v1 — add new branches as Paddle surfaces new event shapes we care
  * about.
@@ -48,7 +48,7 @@ export function verifyPaddleSignature(
   if (Math.abs(now - parsed.ts) > tolerance) return false;
 
   const expected = createHmac("sha256", env.PADDLE_WEBHOOK_SECRET)
-    .update(`${parsed.ts}.${rawBody}`, "utf8")
+    .update(`${parsed.ts}:${rawBody}`, "utf8")
     .digest("hex");
 
   const expectedBuf = Buffer.from(expected, "hex");

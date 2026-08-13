@@ -381,7 +381,6 @@ licentra/
 - [ ] `LICENSE_MASTER_KEY` 32 字节 hex（64 chars），用 KMS / secret manager
 - [ ] `RESEND_API_KEY` 是真实 key，不是 `re_dev`
 - [ ] `PADDLE_WEBHOOK_SECRET` 是 Paddle 后台给的真实 secret
-- [ ] `PADDLE_ENVIRONMENT=production`
 - [ ] Neon DB 加 IP 白名单（Vercel egress）
 - [ ] 上线前用 `pnpm build` 通过；用 `pnpm tsx scripts/smoke-sign.ts` 验证签名管线
 - [ ] Dashboard 默认密码已改
