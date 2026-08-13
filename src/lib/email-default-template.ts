@@ -21,7 +21,7 @@ export const DEFAULT_EMAIL_BODY_HTML = `
       <div style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; background: #ffffff; margin-bottom: 16px;">
         <p style="margin: 0 0 8px;"><strong>[[产品]]:</strong> [[产品名]]</p>
         <p style="margin: 0 0 8px;"><strong>[[套餐]]:</strong> [[永久授权]]</p>
-        <p style="margin: 0 0 8px;"><strong>[[订单号]]:</strong> {{orderId}}</p>
+        <p style="margin: 0 0 8px;"><strong>[[交易号]]:</strong> {{orderId}}</p>
         <p style="margin: 0;"><strong>[[收件邮箱]]:</strong> {{email}}</p>
       </div>
       <div style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; background: #ffffff;">

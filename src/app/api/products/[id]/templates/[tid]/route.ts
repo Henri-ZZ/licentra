@@ -12,6 +12,7 @@ const paramsSchema = z.object({
 const patchSchema = z.object({
   displayName: z.string().min(1).max(64).optional(),
   fromAddress: z.string().max(200).optional().nullable(),
+  fromName: z.string().max(200).optional().nullable(),
   subject: z.string().min(1).max(200).optional(),
   bodyHtml: z.string().min(1).max(20000).optional(),
 });

@@ -27,6 +27,7 @@ interface Template {
   displayName: string;
   isDefault: boolean;
   fromAddress: string | null;
+  fromName: string | null;
   subject: string;
   bodyHtml: string;
 }

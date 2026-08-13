@@ -26,6 +26,7 @@ interface TemplateSeed {
   locale: string;
   displayName: string;
   fromAddress: string | null;
+  fromName: string | null;
   subject: string;
   bodyHtml: string;
 }
@@ -61,6 +62,7 @@ export function TemplateFormDialog(props: Props) {
     locale: "",
     displayName: "",
     fromAddress: "" as string | null,
+    fromName: "" as string | null,
     subject: DEFAULT_EMAIL_SUBJECT,
     bodyHtml: DEFAULT_EMAIL_BODY_HTML,
   };
@@ -68,6 +70,7 @@ export function TemplateFormDialog(props: Props) {
   const [locale, setLocale] = useState(initial.locale);
   const [displayName, setDisplayName] = useState(initial.displayName);
   const [fromAddress, setFromAddress] = useState<string>(initial.fromAddress ?? "");
+  const [fromName, setFromName] = useState<string>(initial.fromName ?? "");
   const [subject, setSubject] = useState(initial.subject);
   const [bodyHtml, setBodyHtml] = useState(initial.bodyHtml);
 
@@ -77,6 +80,7 @@ export function TemplateFormDialog(props: Props) {
     setLocale(initial.locale);
     setDisplayName(initial.displayName);
     setFromAddress(initial.fromAddress ?? "");
+    setFromName(initial.fromName ?? "");
     setSubject(initial.subject);
     setBodyHtml(initial.bodyHtml);
     setError(null);
@@ -102,6 +106,7 @@ export function TemplateFormDialog(props: Props) {
         ? {
             displayName,
             fromAddress: fromAddress.trim() || null,
+            fromName: fromName.trim() || null,
             subject,
             bodyHtml,
           }
@@ -109,6 +114,7 @@ export function TemplateFormDialog(props: Props) {
             locale: localeClean,
             displayName,
             fromAddress: fromAddress.trim() || null,
+            fromName: fromName.trim() || null,
             subject,
             bodyHtml,
           };
@@ -195,18 +201,32 @@ export function TemplateFormDialog(props: Props) {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="tpl-from">From address</Label>
-            <Input
-              id="tpl-from"
-              value={fromAddress}
-              onChange={(e) => setFromAddress(e.target.value)}
-              placeholder="Licentra <noreply@henri.ren>"
-            />
-            <p className="text-xs text-muted-foreground">
-              Optional. Leave blank to fall back to the hard-coded Resend
-              dev address. The domain must be verified in Resend.
-            </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="tpl-from-name">From name</Label>
+              <Input
+                id="tpl-from-name"
+                value={fromName}
+                onChange={(e) => setFromName(e.target.value)}
+                placeholder="Licentra"
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional. Display name shown to the recipient.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tpl-from">From address</Label>
+              <Input
+                id="tpl-from"
+                value={fromAddress}
+                onChange={(e) => setFromAddress(e.target.value)}
+                placeholder="noreply@henri.ren"
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional. Email address; the domain must be verified in
+                Resend.
+              </p>
+            </div>
           </div>
 
           <div className="space-y-2">

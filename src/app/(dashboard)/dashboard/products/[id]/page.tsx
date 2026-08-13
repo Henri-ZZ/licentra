@@ -58,6 +58,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
           displayName: t.displayName,
           isDefault: t.isDefault,
           fromAddress: t.fromAddress,
+          fromName: t.fromName,
           subject: t.subject,
           bodyHtml: t.bodyHtml,
         }))}

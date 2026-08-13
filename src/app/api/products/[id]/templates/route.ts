@@ -18,6 +18,7 @@ const createSchema = z.object({
   locale: localeSchema,
   displayName: z.string().min(1).max(64),
   fromAddress: z.string().max(200).optional().nullable(),
+  fromName: z.string().max(200).optional().nullable(),
   subject: z.string().min(1).max(200),
   bodyHtml: z.string().min(1).max(20000),
 });
@@ -87,6 +88,7 @@ export async function POST(
         displayName: parsed.data.displayName,
         isDefault: false,
         fromAddress: parsed.data.fromAddress ?? null,
+        fromName: parsed.data.fromName ?? null,
         subject: parsed.data.subject,
         bodyHtml: parsed.data.bodyHtml,
       },

@@ -73,6 +73,9 @@ model ProductEmailTemplate {
   isDefault   Boolean  @default(false)
   // Optional per-template from address. Falls back to Product.resendFromAddress.
   fromAddress String?
+  // Optional display name for the from address (e.g. "Licentra"). When set,
+  // the mail is sent as "Licentra <fromAddress>"; otherwise just fromAddress.
+  fromName    String?
   subject     String
   bodyHtml    String   @db.Text
   createdAt   DateTime @default(now())

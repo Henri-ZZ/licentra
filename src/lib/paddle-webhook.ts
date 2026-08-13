@@ -183,10 +183,12 @@ export async function handleTransactionCompleted(event: PaddleEvent) {
       );
       await sendLicenseEmailForLicense({
         licenseId: license.id,
+        transactionId,
         product: {
           ...existingOrder.product,
           plan: license.plan ?? "",
-          fromAddress: tpl?.fromAddress ?? FALLBACK_FROM,
+          fromAddress: tpl?.fromAddress ?? null,
+          fromName: tpl?.fromName ?? null,
           subject: tpl?.subject ?? "",
           bodyHtml: tpl?.bodyHtml ?? "",
         },
@@ -247,10 +249,12 @@ export async function handleTransactionCompleted(event: PaddleEvent) {
 
   await sendLicenseEmailForLicense({
     licenseId: license.id,
+    transactionId,
     product: {
       ...product,
       plan: tier.plan,
-      fromAddress: tpl?.fromAddress ?? FALLBACK_FROM,
+      fromAddress: tpl?.fromAddress ?? null,
+      fromName: tpl?.fromName ?? null,
       subject: tpl?.subject ?? "",
       bodyHtml: tpl?.bodyHtml ?? "",
     },
@@ -341,9 +345,11 @@ export function pickTierForOrder<
 
 interface SendLicenseEmailParams {
   licenseId: string;
+  transactionId: string;
   product:
     | (ProductForEmail & {
-        fromAddress: string;
+        fromAddress: string | null;
+        fromName: string | null;
         subject: string;
         bodyHtml: string;
       })
@@ -410,20 +416,25 @@ async function sendLicenseEmailForLicense(p: SendLicenseEmailParams) {
     return;
   }
 
-  const { subject, bodyHtml, fromAddress } = p.product;
+  const { subject, bodyHtml, fromAddress, fromName } = p.product;
+  // Combine the template's display name + address into Resend's
+  // "Name <email>" form. Fall back to FALLBACK_FROM when no address is set.
+  const from = fromName && fromAddress
+    ? `${fromName} <${fromAddress}>`
+    : (fromAddress ?? FALLBACK_FROM);
 
   try {
     const send = isResendStubMode() ? stubSendLicenseEmail : sendLicenseEmail;
     await send({
       to: p.customerEmail,
-      fromAddress,
+      fromAddress: from,
       subject,
       bodyHtml,
       vars: {
         code: p.rawKeyOverride,
         productName: p.product.name,
         plan: p.product.plan,
-        orderId: p.licenseId,
+        orderId: p.transactionId,
         email: p.customerEmail,
         maxActivations: p.product.maxActivations,
         supportEmail: p.product.supportEmail ?? env.SUPPORT_EMAIL,

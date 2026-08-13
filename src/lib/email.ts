@@ -23,7 +23,7 @@ export interface LicenseEmailVars {
   productName: string;
   /** Plan name (e.g. "standard", "lifetime"). */
   plan: string;
-  /** License ID (cuid), shown as the order reference. */
+  /** Paddle transaction id (txn_...), shown as the order reference. */
   orderId: string;
   /** Customer email (the recipient). */
   email: string;
