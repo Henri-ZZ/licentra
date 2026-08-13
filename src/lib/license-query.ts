@@ -33,11 +33,15 @@ export async function loadLicenseByHash(
 export function buildLicensePayload(
   license: LicenseWithProduct
 ): LicensePayload {
+  // `plan` and `expiresAt` were snapshotted onto the LicenseKey row at
+  // issue time (see paddle-webhook.handleTransactionCompleted). They're
+  // immutable from the customer's perspective even if the tier's plan
+  // name is later edited — that's the point of the snapshot.
   return {
     product: license.product.slug,
-    plan: license.product.plan,
+    plan: license.plan ?? "",
     license_id: license.id,
-    expires_at: null,
+    expires_at: license.expiresAt ? license.expiresAt.toISOString() : null,
   };
 }
 

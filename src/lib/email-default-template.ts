@@ -31,6 +31,7 @@ export const DEFAULT_EMAIL_BODY_HTML = `
         </div>
       </div>
       <p style="margin: 20px 0 8px;">[[请在 产品名 中输入此激活码完成激活。]]</p>
+      <p style="margin: 20px 0 8px;">[[最多激活设备数]]: {{maxActivations}}</p>
       <p style="margin: 0 0 8px; color: #6b7280; font-size: 14px;">[[如需帮助，您可以直接回复此邮件，或发送邮件至]] <a href="mailto:{{supportEmail}}" style="color: #2563eb; text-decoration: underline;">{{supportEmail}}</a>.</p>
       <p style="margin: 0; color: #9ca3af; font-size: 12px;">[[此邮件为您最近一次购买的交易通知，不包含营销订阅内容。]]</p>
     </div>

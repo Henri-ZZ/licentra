@@ -1,0 +1,297 @@
+# External API
+
+Endpoints called by **products** (the end-user software that ships with
+Licentra's signed license keys) and by **payment providers** (Paddle). No
+dashboard session cookie is required — these endpoints authenticate via
+the embedded license key value or via Paddle's webhook signature.
+
+**Base URL**: `https://<your-host>` (no separate host in v1).
+
+**Content type**: requests and responses are JSON.
+
+**Common error shape**: `{ "error": "<machine_code>", ... }`.
+
+---
+
+# Part 1 — Product (license) endpoints
+
+These are called by the end-user software that activates / validates a
+license. The product ships its signed public key (PEM) and the customer's
+license key; the server verifies the key against the database and returns
+a signed response that the client verifies against the public key.
+
+**Public key**: distributed out-of-band. The dashboard exposes a
+product's public key + fingerprint on the product detail page. The client
+embeds the public key at build time and uses it to verify the
+`signature` returned by these endpoints.
+
+## Algorithm
+
+All four endpoints take a license key (the customer's copy, e.g.
+`ABCD-1234-EFGH-5678`) and return a signed payload:
+
+```json
+{
+  "valid": true,
+  "payload": {
+    "product": "stealth-browser-assistant",
+    "plan": "standard",
+    "license_id": "cmsabc123…",
+    "expires_at": null
+  },
+  "signature": "base64-encoded ECDSA-DER signature over JSON.stringify(payload)"
+}
+```
+
+The client should:
+1. Verify `payload.product` matches the bundle's expected product slug.
+2. Verify `signature` against the embedded public key using
+   ECDSA-P-256 / SHA-256.
+3. Treat `valid: false` as "deny" regardless of `reason`.
+
+**Note on `expires_at`**: always `null` in v1. Reserved for future
+expiry support.
+
+---
+
+### `POST /api/license/validate`
+
+Lightweight check that a key exists and is not revoked/refunded. Does
+**not** register a fingerprint. Use this for "is this key registered?"
+checks that don't require an activation.
+
+**Request body**
+```json
+{ "key": "ABCD-1234-EFGH-5678" }
+```
+
+**Responses**
+| Status | Body                                                                                                 | Notes                              |
+|--------|------------------------------------------------------------------------------------------------------|------------------------------------|
+| 200    | `{ valid: true, payload, signature }` OR `{ valid: false, reason: "license_not_found" }`            | Always 200 — `valid` is the signal |
+| 400    | `{ "error": "invalid_json" }`                                                                        |                                    |
+| 400    | `{ "error": "invalid_payload" }`                                                                     |                                    |
+
+**`reason` values** (when `valid: false`):
+- `license_not_found` — key is unknown to the system
+- `license_revoked` — admin revoked, or product has no signing key yet
+- `license_refunded` — Paddle issued a refund
+
+### `POST /api/license/activate`
+
+Bind a fingerprint to a license. Idempotent — if the same fingerprint
+already exists it just refreshes `lastCheckedAt`. If the license is at
+its `maxActivations` cap, the oldest activation is evicted and the new
+one is created.
+
+**Request body**
+```json
+{
+  "key": "ABCD-1234-EFGH-5678",
+  "fingerprint": "machine-id-or-hash",
+  "label": "Alice's MacBook"
+}
+```
+
+| Field       | Type    | Required | Notes                                    |
+|-------------|---------|----------|------------------------------------------|
+| key         | string  | yes      | The customer license key                |
+| fingerprint | string  | yes      | Stable per-machine identifier           |
+| label       | string? | no       | ≤ 120 chars; human-readable device name |
+
+**Responses**
+| Status | Body                                                                          |
+|--------|-------------------------------------------------------------------------------|
+| 200    | `{ valid: true, payload, signature }` OR `{ valid: false, reason }`          |
+| 400    | `{ "error": "invalid_json" }` / `{ "error": "invalid_payload", "details": {…} }` |
+
+**`reason` values**: same as `validate` (no `activation_evicted` here —
+eviction happens silently and the new fingerprint is bound).
+
+**Side effects**: writes a row in `Activation` (or updates
+`lastCheckedAt`), captures `IP` from `X-Forwarded-For` and `User-Agent`
+from headers.
+
+### `POST /api/license/check-in`
+
+Heartbeat from the running product. Confirms the fingerprint is still
+bound. If the fingerprint was evicted (e.g. user reinstalled on another
+machine displacing this one), returns `activation_evicted` so the client
+can prompt re-activation.
+
+Recommended interval: **24 hours** (the server returns
+`next_check_in_seconds: 86400` so the client can sync).
+
+**Request body**
+```json
+{
+  "key": "ABCD-1234-EFGH-5678",
+  "fingerprint": "machine-id-or-hash",
+  "client_version": "1.4.2",
+  "platform": "macos"
+}
+```
+
+| Field           | Type    | Required | Notes                                    |
+|-----------------|---------|----------|------------------------------------------|
+| key             | string  | yes      |                                          |
+| fingerprint     | string  | yes      |                                          |
+| client_version  | string? | no       | ≤ 40 chars; logged for telemetry only     |
+| platform        | string? | no       | ≤ 40 chars; logged for telemetry only     |
+
+**Responses**
+| Status | Body                                                                                                  |
+|--------|-------------------------------------------------------------------------------------------------------|
+| 200    | `{ valid: true, payload, signature, next_check_in_seconds: 86400 }` OR `{ valid: false, reason }`     |
+| 400    | `{ "error": "invalid_json" }` / `{ "error": "invalid_payload", "details": {…} }`                       |
+
+**`reason` values**: `license_not_found`, `license_revoked`,
+`license_refunded`, `activation_evicted` (this fingerprint is no longer
+bound — the user must re-activate).
+
+### `POST /api/license/deactivate`
+
+Unbind a fingerprint from a license. Idempotent (missing fingerprint is
+not an error). Does **not** revoke the license itself — only the
+activation row is removed.
+
+**Request body**
+```json
+{
+  "key": "ABCD-1234-EFGH-5678",
+  "fingerprint": "machine-id-or-hash"
+}
+```
+
+**Responses**
+| Status | Body                                                                        |
+|--------|-----------------------------------------------------------------------------|
+| 200    | `{ valid: true, payload, signature }` OR `{ valid: false, reason }`        |
+| 400    | `{ "error": "invalid_json" }` / `{ "error": "invalid_payload" }`            |
+
+---
+
+# Part 2 — Paddle webhooks
+
+Paddle Billing webhooks are split by event type. Each event has its own
+URL — point each Paddle event subscription at its dedicated endpoint.
+Delivering a different `event_type` to the wrong URL returns 400
+`wrong_event_type` and Paddle will keep retrying (so a misconfiguration
+surfaces in the Paddle dashboard instead of silently dropping events).
+
+| Paddle event                | URL                                                |
+|-----------------------------|----------------------------------------------------|
+| `transaction.completed`     | `POST /api/webhook/paddle-transaction-completed`   |
+| `transaction.updated`       | `POST /api/webhook/paddle-transaction-updated`     |
+
+Both endpoints share the same authentication, idempotency, and
+`WebhookEvent` recording — only the handler differs.
+
+---
+
+### `POST /api/webhook/paddle-transaction-completed`
+
+Receives the Paddle Billing `transaction.completed` event. Creates the
+`Order` + `LicenseKey` and sends the customer email with the new key.
+
+**Auth**: `Paddle-Signature` header. Format: `ts=<unix-seconds>;h1=<hex>`.
+HMAC is computed as `HMAC-SHA256(PADDLE_WEBHOOK_SECRET, "${ts}.${rawBody}")`.
+The endpoint rejects signatures with timestamps more than 5 minutes from
+server time.
+
+**Idempotency**: every event is keyed by `event_id` in the `WebhookEvent`
+table. Re-deliveries of the same event return `{ ok: true, duplicate: true }`
+without re-processing.
+
+**Request body** (Paddle Billing `transaction.completed` example)
+```json
+{
+  "event_id": "evt_01h…",
+  "event_type": "transaction.completed",
+  "occurred_at": "2026-01-15T10:30:00.000Z",
+  "data": {
+    "id": "txn_01h…",
+    "status": "completed",
+    "customer_id": "ctm_01h…",
+    "custom_data": {
+      "productId": "<Licentra Product.cuid>",
+      "paddleProductId": "pro_xxx"
+    },
+    "items": [{ "price_id": "pri_xxx", "quantity": 1 }],
+    "customer": {
+      "id": "ctm_01h…",
+      "email": "buyer@example.com",
+      "name": "Buyer Name",
+      "locale": "zh-CN"
+    },
+    "details": {
+      "totals": { "grand_total": "2999", "currency_code": "USD" },
+      "customer": { "email": "buyer@example.com", "locale": "zh-CN" }
+    }
+  }
+}
+```
+
+**Response** — always JSON, status reflects retry advice:
+| Status | Body                                       | When                                                  |
+|--------|--------------------------------------------|-------------------------------------------------------|
+| 200    | `{ "ok": true }`                           | New event processed                                   |
+| 200    | `{ "ok": true, "duplicate": true }`        | Event already in `WebhookEvent` (idempotent replay)  |
+| 400    | `{ "error": "invalid_json" }`              | Body is not valid JSON after signature check          |
+| 400    | `{ "error": "wrong_event_type", ...}`      | Event_type doesn't match this URL (Paddle will retry) |
+| 401    | `{ "error": "invalid_signature" }`        | Bad/missing/expired `Paddle-Signature`                |
+| 500    | `{ "error": "<message>" }`                 | Handler threw — Paddle will retry                     |
+
+**Product resolution**: the handler reads `custom_data.productId`
+(preferred — the Licentra Product.cuid you set in Paddle's checkout
+config) and falls back to Paddle's literal `product_id` matching
+`Product.paddleProductId`.
+
+**Email template selection**: `data.customer.locale` (Paddle's
+checkout locale) is matched against `ProductEmailTemplate.locale` by
+`-`-prefix (`"zh-CN"` → `"zh"` template). If no match, falls back to
+the product's `isDefault` template (always `en`). The captured locale
+is persisted on `Order.locale` and used for any future re-sends.
+
+**Email content**: per-language template from `ProductEmailTemplate`.
+`{{xxx}}` placeholders are interpolated at send time:
+`{{code}}`, `{{productName}}`, `{{plan}}`, `{{orderId}}`, `{{email}}`,
+`{{maxActivations}}`, `{{supportEmail}}`. From-address resolves via
+`template.fromAddress ?? <fallback>`.
+
+---
+
+### `POST /api/webhook/paddle-transaction-updated`
+
+Receives the Paddle Billing `transaction.updated` event. Currently
+the handler reacts only when the transaction status transitions to a
+refunded / canceled / partially_refunded state: the associated `Order`'s
+status is synced and any `LicenseKey` rows tied to that order are
+revoked. Other status transitions are recorded in `WebhookEvent` but
+silently ignored.
+
+**Auth, idempotency, error responses**: identical to
+`paddle-transaction-completed`.
+
+**Request body** (Paddle Billing `transaction.updated` example)
+```json
+{
+  "event_id": "evt_01h…",
+  "event_type": "transaction.updated",
+  "occurred_at": "2026-01-15T10:31:00.000Z",
+  "data": {
+    "id": "txn_01h…",
+    "status": "refunded",
+    "customer_id": "ctm_01h…",
+    "custom_data": { "productId": "<Licentra Product.cuid>" }
+  }
+}
+```
+
+**Configuring the webhooks in Paddle**: create two webhook
+subscriptions in the Paddle dashboard — one for `transaction.completed`
+pointed at `https://<your-host>/api/webhook/paddle-transaction-completed`,
+one for `transaction.updated` pointed at
+`https://<your-host>/api/webhook/paddle-transaction-updated`. Use
+the `PADDLE_WEBHOOK_SECRET` from your `.env.local` as the signing
+secret on each.

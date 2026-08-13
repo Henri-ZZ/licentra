@@ -1,7 +1,6 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
-import { prisma } from "@/lib/prisma";
-import { generateLicenseKey } from "@/lib/license-key";
+import { env } from "@/lib/env";
 import {
   isCompletedTransaction,
   isRefundedStatus,
@@ -9,25 +8,42 @@ import {
   verifyPaddleSignature,
   type PaddleEvent,
 } from "@/lib/paddle";
+import { generateLicenseKey } from "@/lib/license-key";
 import {
   isResendStubMode,
   sendLicenseEmail,
   stubSendLicenseEmail,
 } from "@/lib/email";
 import { extractPaddleLocale, pickTemplate } from "@/lib/locale";
-import { env } from "@/lib/env";
+import { prisma } from "@/lib/prisma";
 
-const FALLBACK_FROM = "Licentra <onboarding@resend.dev>";
+export const FALLBACK_FROM = "Licentra <onboarding@resend.dev>";
 
 /**
- * Paddle Billing webhook entry point.
+ * Generic Paddle webhook dispatcher. Each event type lives at its own URL
+ * (`/api/webhook/paddle-<event-name>`), and each URL passes its expected
+ * `event_type` here so we can reject misrouted deliveries with a clean 400
+ * before touching the WebhookEvent table.
  *
- * - Verifies the HMAC-SHA256 signature on the raw body.
- * - Idempotent: rows in WebhookEvent are keyed by `event_id`.
- * - transaction.completed → create Order + LicenseKey, send email.
- * - transaction.updated (refunded/canceled) → revoke associated licenses.
+ * Ordering:
+ *   1. Verify HMAC-SHA256 signature on the raw body.
+ *   2. Parse JSON.
+ *   3. Reject if event_type != expectedEventType (Paddle will keep retrying,
+ *      which is what you want when the dashboard is misconfigured to point
+ *      the wrong URL at this slot — the failure surfaces in Paddle's UI).
+ *   4. Insert into WebhookEvent (unique on event_id; duplicate → `{ ok: true, duplicate: true }`).
+ *   5. Run the handler.
+ *   6. Mark WebhookEvent.processed = true, or .processed = false + error.
+ *   7. Return 200 on success; 500 on handler failure so Paddle retries.
  */
-export async function POST(request: NextRequest) {
+export async function processWebhookEvent<T extends PaddleEvent>(opts: {
+  request: NextRequest;
+  expectedEventType: string;
+  typeGuard: (e: PaddleEvent) => e is T;
+  handler: (e: T) => Promise<void>;
+}): Promise<NextResponse> {
+  const { request, expectedEventType, typeGuard, handler } = opts;
+
   const rawBody = await request.text();
   const sigHeader = request.headers.get("paddle-signature");
 
@@ -42,6 +58,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
+  if (event.event_type !== expectedEventType) {
+    return NextResponse.json(
+      {
+        error: "wrong_event_type",
+        expected: expectedEventType,
+        got: event.event_type,
+      },
+      { status: 400 }
+    );
+  }
+
   // Idempotent: short-circuit if we've already processed this event.
   const existing = await prisma.webhookEvent.findUnique({
     where: { paddleEventId: event.event_id },
@@ -50,7 +77,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, duplicate: true });
   }
 
-  const webhookRow = await prisma.webhookEvent.create({
+  const row = await prisma.webhookEvent.create({
     data: {
       paddleEventId: event.event_id,
       eventType: event.event_type,
@@ -60,24 +87,24 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    if (isCompletedTransaction(event)) {
-      await handleTransactionCompleted(event);
-    } else if (isUpdatedTransaction(event)) {
-      await handleTransactionUpdated(event);
+    if (!typeGuard(event)) {
+      // Unreachable since we checked event_type above, but keeps TS happy.
+      return NextResponse.json({ error: "type_guard_failed" }, { status: 400 });
     }
+    await handler(event);
     await prisma.webhookEvent.update({
-      where: { id: webhookRow.id },
+      where: { id: row.id },
       data: { processed: true, error: null },
     });
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await prisma.webhookEvent.update({
-      where: { id: webhookRow.id },
+      where: { id: row.id },
       data: { processed: false, error: message },
     });
-    // Returning 500 makes Paddle retry, which is exactly what we want for
-    // transient failures (e.g. Resend down).
+    // 500 makes Paddle retry the event — desired for transient failures
+    // (e.g. Resend down, DB hiccup).
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -86,7 +113,7 @@ export async function POST(request: NextRequest) {
 // Handlers
 // ---------------------------------------------------------------------------
 
-async function handleTransactionCompleted(event: PaddleEvent) {
+export async function handleTransactionCompleted(event: PaddleEvent) {
   if (!isCompletedTransaction(event)) return;
   const tx = event.data;
 
@@ -136,6 +163,7 @@ async function handleTransactionCompleted(event: PaddleEvent) {
         licenseId: license.id,
         product: {
           ...existingOrder.product,
+          plan: license.plan ?? "",
           fromAddress: tpl?.fromAddress ?? FALLBACK_FROM,
           subject: tpl?.subject ?? "",
           bodyHtml: tpl?.bodyHtml ?? "",
@@ -163,10 +191,30 @@ async function handleTransactionCompleted(event: PaddleEvent) {
 
   const rawKey = generateLicenseKey();
   const { sha256Hex } = await import("@/lib/license-key");
+
+  // Resolve the price tier for this transaction. The webhook currently
+  // matches product by Paddle product_id only (see
+  // docs/plans/price-tiers.md). With one tier we use it; with multiple
+  // tiers we fall back to the oldest by createdAt and log a warning.
+  // priceId-based matching is the next iteration.
+  const tier = pickTierForOrder(product.priceTiers);
+  if (!tier) {
+    throw new Error(
+      `product ${product.slug} has no price tiers; add one in the dashboard`,
+    );
+  }
+  const expiresAt =
+    tier.expiresInDays == null
+      ? null
+      : new Date(Date.now() + tier.expiresInDays * 24 * 60 * 60 * 1000);
+
   const license = await prisma.licenseKey.create({
     data: {
       keyHash: sha256Hex(rawKey),
       productId: product.id,
+      tierId: tier.id,
+      plan: tier.plan,
+      expiresAt,
       orderId: order.id,
       maxActivations: product.maxActivations,
     },
@@ -174,10 +222,12 @@ async function handleTransactionCompleted(event: PaddleEvent) {
 
   // Hold the raw key in memory just long enough to send the email.
   const tpl = pickTemplate(product.templates, paddleLocale);
+
   await sendLicenseEmailForLicense({
     licenseId: license.id,
     product: {
       ...product,
+      plan: tier.plan,
       fromAddress: tpl?.fromAddress ?? FALLBACK_FROM,
       subject: tpl?.subject ?? "",
       bodyHtml: tpl?.bodyHtml ?? "",
@@ -187,7 +237,7 @@ async function handleTransactionCompleted(event: PaddleEvent) {
   });
 }
 
-async function handleTransactionUpdated(event: PaddleEvent) {
+export async function handleTransactionUpdated(event: PaddleEvent) {
   if (!isUpdatedTransaction(event)) return;
   const tx = event.data;
 
@@ -220,7 +270,7 @@ async function handleTransactionUpdated(event: PaddleEvent) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function findProductByPaddleRef(paddleProductId: string | null) {
+export async function findProductByPaddleRef(paddleProductId: string | null) {
   if (!paddleProductId) return null;
   // Try by paddleProductId first; the webhook's custom_data.productId is the
   // Licentra Product.id in our setup, but we also support the literal
@@ -232,8 +282,39 @@ async function findProductByPaddleRef(paddleProductId: string | null) {
         { id: paddleProductId },
       ],
     },
-    include: { templates: true },
+    include: { templates: true, priceTiers: true },
   });
+}
+
+/**
+ * Picks which PriceTier should back a license for a given order.
+ *
+ * The webhook currently matches product by Paddle product_id only — see
+ * docs/plans/price-tiers.md for the rationale. So we don't know which
+ * tier the buyer actually chose; this helper is the fallback rule until
+ * we add price_id matching:
+ *
+ *   - 0 tiers  → null (caller treats as fatal error).
+ *   - 1 tier   → use it.
+ *   - N tiers  → use the oldest by createdAt and log a warning. Eventually
+ *                we'll read tx.items[0].price_id and look it up by
+ *                paddlePriceId; until then, "first tier added" is the
+ *                safest heuristic — admin typically creates the lifetime
+ *                tier first and adds 30天/一年 later.
+ */
+export function pickTierForOrder<
+  T extends { id: string; plan: string; expiresInDays: number | null; createdAt: Date },
+>(tiers: T[]): T | null {
+  if (tiers.length === 0) return null;
+  if (tiers.length === 1) return tiers[0];
+  const sorted = [...tiers].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+  );
+  console.warn(
+    `[webhook] product has ${tiers.length} tiers; picking oldest (${sorted[0].plan}). ` +
+      `priceId-based matching not yet implemented — see docs/plans/price-tiers.md.`,
+  );
+  return sorted[0];
 }
 
 interface SendLicenseEmailParams {
@@ -252,6 +333,8 @@ interface SendLicenseEmailParams {
 interface ProductForEmail {
   name: string;
   slug: string;
+  // `plan` now lives on the matched PriceTier, not the Product. We pass it
+  // through here so the `{{plan}}` email placeholder still interpolates.
   plan: string;
   maxActivations: number;
   supportEmail: string | null;

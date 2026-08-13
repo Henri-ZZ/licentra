@@ -11,9 +11,7 @@ model Product {
   name                 String
   slug                 String       @unique
   description          String?
-  plan                 String       @default("standard")
   paddleProductId      String?      @unique
-  paddlePriceId        String?
   maxActivations       Int          @default(3)
   active               Boolean      @default(true)
 
@@ -31,8 +29,34 @@ model Product {
   licenses             LicenseKey[]
   orders               Order[]
   templates            ProductEmailTemplate[]
+  priceTiers           ProductPriceTier[]
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
+}
+
+model ProductPriceTier {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // Free-text plan name shown in dashboards and signed into LicensePayload.
+  // 1–40 chars. Unique per product.
+  plan          String
+  // Paddle price ID (pri_xxx). Required so the admin has recorded the
+  // Paddle-side reference; the webhook currently doesn't match on it (see
+  // docs/plans/price-tiers.md for why and when that changes).
+  paddlePriceId String?
+  // Snapshot-style duration. null = lifetime. **Immutable** post-creation:
+  // changing this for an existing tier would silently shift expires_at on
+  // every license already issued under it.
+  expiresInDays Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  licenses      LicenseKey[]
+
+  @@unique([productId, plan])
+  @@unique([productId, paddlePriceId])
+  @@index([productId])
 }
 
 model ProductEmailTemplate {
@@ -65,6 +89,13 @@ model LicenseKey {
   product        Product      @relation(fields: [productId], references: [id])
   orderId        String?
   order          Order?       @relation(fields: [orderId], references: [id])
+  // Snapshot of the PriceTier at issue time. Null for licenses issued
+  // before the PriceTier migration ran. plan + expiresAt are denormalised
+  // onto the row for hot-path read efficiency (validate/activate/check-in).
+  tierId         String?
+  tier           ProductPriceTier? @relation(fields: [tierId], references: [id])
+  plan           String?
+  expiresAt      DateTime?
   maxActivations Int
   revoked        Boolean      @default(false)
   revokedAt      DateTime?
@@ -76,11 +107,12 @@ model LicenseKey {
   emailAttempts  Int          @default(0)
 
   activations    Activation[]
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@index([productId])
   @@index([orderId])
+  @@index([tierId])
 }
 
 model Activation {

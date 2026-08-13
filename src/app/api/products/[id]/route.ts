@@ -7,12 +7,11 @@ import { prisma } from "@/lib/prisma";
 const updateSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   description: z.string().max(2000).optional().nullable(),
-  plan: z.string().min(1).max(40).optional(),
   paddleProductId: z.string().max(120).optional().nullable(),
-  paddlePriceId: z.string().max(120).optional().nullable(),
   maxActivations: z.number().int().min(1).max(100).optional(),
   active: z.boolean().optional(),
   supportEmail: z.string().email().max(200).optional().nullable(),
+  // Plan / priceId moved to /tiers endpoints. See docs/plans/price-tiers.md.
 });
 
 export async function PATCH(

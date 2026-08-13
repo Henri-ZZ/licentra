@@ -6,8 +6,10 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "postinstall": "prisma generate",
-    "backfill:templates": "tsx scripts/backfill-email-templates.ts"
+    "postinstall": "prisma generate && tsx scripts/copy-swagger-assets.ts",
+    "db:push": "prisma db push",
+    "backfill:templates": "tsx scripts/backfill-email-templates.ts",
+    "backfill:tiers": "tsx scripts/migrate-product-tiers.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -38,6 +40,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "swagger-ui-dist": "^5.32.13",
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
     "typescript": "^5"

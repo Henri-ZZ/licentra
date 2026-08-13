@@ -80,6 +80,11 @@ export async function POST(
     data: {
       keyHash: newHash,
       productId: license.productId,
+      // Carry the tier snapshot forward so the replacement license is
+      // indistinguishable from the original in the signed payload.
+      tierId: license.tierId,
+      plan: license.plan,
+      expiresAt: license.expiresAt,
       orderId: license.orderId,
       maxActivations: license.maxActivations,
       emailedAt: null,
@@ -105,7 +110,7 @@ export async function POST(
       vars: {
         code: newRawKey,
         productName: license.product.name,
-        plan: license.product.plan,
+        plan: license.plan ?? "",
         orderId: newLicense.id,
         email: customerEmail,
         maxActivations: license.maxActivations,

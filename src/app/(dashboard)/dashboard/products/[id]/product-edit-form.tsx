@@ -25,12 +25,12 @@ export function ProductEditForm({ product }: { product: Product }) {
       const payload = {
         name: String(fd.get("name") ?? ""),
         description: String(fd.get("description") ?? "") || null,
-        plan: String(fd.get("plan") ?? ""),
         paddleProductId: String(fd.get("paddleProductId") ?? "") || null,
-        paddlePriceId: String(fd.get("paddlePriceId") ?? "") || null,
         maxActivations: Number(fd.get("maxActivations") ?? 3),
         active: fd.get("active") === "on",
         supportEmail: String(fd.get("supportEmail") ?? "") || null,
+        // plan / priceId live on PriceTier rows now — managed in the
+        // "Price tiers" card below. See docs/plans/price-tiers.md.
       };
       const res = await fetch(`/api/products/${product.id}`, {
         method: "PATCH",
@@ -59,8 +59,13 @@ export function ProductEditForm({ product }: { product: Product }) {
           <Input id="name" name="name" defaultValue={product.name} required />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="plan">Plan</Label>
-          <Input id="plan" name="plan" defaultValue={product.plan} />
+          <Label htmlFor="paddleProductId">Paddle product ID</Label>
+          <Input
+            id="paddleProductId"
+            name="paddleProductId"
+            defaultValue={product.paddleProductId ?? ""}
+            placeholder="pro_xxx"
+          />
         </div>
       </div>
       <div className="space-y-2">
@@ -71,34 +76,17 @@ export function ProductEditForm({ product }: { product: Product }) {
           defaultValue={product.description ?? ""}
         />
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="space-y-2">
-          <Label htmlFor="maxActivations">Max activations</Label>
-          <Input
-            id="maxActivations"
-            name="maxActivations"
-            type="number"
-            min={1}
-            max={100}
-            defaultValue={product.maxActivations}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="paddleProductId">Paddle product ID</Label>
-          <Input
-            id="paddleProductId"
-            name="paddleProductId"
-            defaultValue={product.paddleProductId ?? ""}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="paddlePriceId">Paddle price ID</Label>
-          <Input
-            id="paddlePriceId"
-            name="paddlePriceId"
-            defaultValue={product.paddlePriceId ?? ""}
-          />
-        </div>
+      <div className="space-y-2">
+        <Label htmlFor="maxActivations">Max activations</Label>
+        <Input
+          id="maxActivations"
+          name="maxActivations"
+          type="number"
+          min={1}
+          max={100}
+          defaultValue={product.maxActivations}
+          className="max-w-xs"
+        />
       </div>
       <div className="space-y-2">
         <Label>Status</Label>

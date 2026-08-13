@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CreditCard, KeySquare, LayoutDashboard, Package } from "lucide-react";
+import { BookOpenText, CreditCard, KeySquare, LayoutDashboard, Package } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,7 @@ const items = [
   { href: "/dashboard/products", label: "Products", icon: Package },
   { href: "/dashboard/licenses", label: "Licenses", icon: KeySquare },
   { href: "/dashboard/orders", label: "Orders", icon: CreditCard },
+  { href: "/dashboard/api-docs", label: "API 文档", icon: BookOpenText },
 ];
 
 export function DashboardSidebar() {

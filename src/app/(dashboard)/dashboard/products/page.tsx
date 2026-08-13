@@ -16,7 +16,10 @@ import { prisma } from "@/lib/prisma";
 export default async function ProductsPage() {
   const products = await prisma.product.findMany({
     orderBy: { createdAt: "desc" },
-    include: { _count: { select: { licenses: true } } },
+    include: {
+      _count: { select: { licenses: true } },
+      priceTiers: { orderBy: { createdAt: "asc" } },
+    },
   });
 
   return (
@@ -51,7 +54,7 @@ export default async function ProductsPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Slug</TableHead>
-                  <TableHead>Plan</TableHead>
+                  <TableHead>Plans</TableHead>
                   <TableHead>Max activations</TableHead>
                   <TableHead>Paddle product</TableHead>
                   <TableHead>Key</TableHead>
@@ -65,8 +68,22 @@ export default async function ProductsPage() {
                   <TableRow key={p.id}>
                     <TableCell className="font-medium">{p.name}</TableCell>
                     <TableCell className="font-mono text-xs">{p.slug}</TableCell>
-                    <TableCell>{p.plan}</TableCell>
-                    <TableCell>{p.maxActivations}</TableCell>
+                    <TableCell>
+                      {p.priceTiers.length === 0 ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <span className="flex flex-wrap gap-1">
+                          {p.priceTiers.map((t) => (
+                            <Badge key={t.id} variant="secondary">
+                              {t.plan}
+                            </Badge>
+                          ))}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {p.maxActivations}
+                    </TableCell>
                     <TableCell className="font-mono text-xs">
                       {p.paddleProductId ?? "—"}
                     </TableCell>

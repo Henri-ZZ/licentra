@@ -4,6 +4,7 @@ import { DeleteProductButton } from "@/app/(dashboard)/dashboard/products/delete
 import { GenerateKeyButton } from "@/app/(dashboard)/dashboard/products/[id]/generate-key-button";
 import { ProductEditForm } from "@/app/(dashboard)/dashboard/products/[id]/product-edit-form";
 import { ProductTemplatesCard } from "@/app/(dashboard)/dashboard/products/[id]/product-templates-card";
+import { ProductTiersCard } from "@/app/(dashboard)/dashboard/products/[id]/product-tiers-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 
@@ -18,6 +19,10 @@ export default async function ProductDetailPage({ params }: PageProps) {
     include: {
       _count: { select: { licenses: true } },
       templates: { orderBy: [{ isDefault: "desc" }, { locale: "asc" }] },
+      priceTiers: {
+        orderBy: { createdAt: "asc" },
+        include: { _count: { select: { licenses: true } } },
+      },
     },
   });
   if (!product) notFound();
@@ -33,6 +38,17 @@ export default async function ProductDetailPage({ params }: PageProps) {
       </div>
 
       <ProductEditForm product={product} />
+
+      <ProductTiersCard
+        productId={product.id}
+        tiers={product.priceTiers.map((t) => ({
+          id: t.id,
+          plan: t.plan,
+          paddlePriceId: t.paddlePriceId,
+          expiresInDays: t.expiresInDays,
+          _count: { licenses: t._count.licenses },
+        }))}
+      />
 
       <ProductTemplatesCard
         productId={product.id}
