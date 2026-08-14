@@ -258,8 +258,9 @@ surfaces in the Paddle dashboard instead of silently dropping events).
 | `transaction.completed`     | `POST /api/webhook/paddle-transaction-completed`   |
 | `transaction.updated`       | `POST /api/webhook/paddle-transaction-updated`     |
 
-Both endpoints share the same authentication, idempotency, and
-`WebhookEvent` recording — only the handler differs.
+Both endpoints share the same authentication and idempotency behavior —
+only the handler differs. Licentra keeps no webhook table: Paddle's own
+delivery log is the authoritative record.
 
 ---
 
@@ -273,9 +274,10 @@ HMAC is computed as `HMAC-SHA256(PADDLE_WEBHOOK_SECRET, "${ts}.${rawBody}")`.
 The endpoint rejects signatures with timestamps more than 5 minutes from
 server time.
 
-**Idempotency**: every event is keyed by `event_id` in the `WebhookEvent`
-table. Re-deliveries of the same event return `{ ok: true, duplicate: true }`
-without re-processing.
+**Idempotency**: at the transaction level — `Order.paddleTransactionId`
+is unique, so re-deliveries of the same transaction find the existing
+Order and just retry the license email if it never went out. A concurrent
+duplicate delivery hits the unique constraint and is treated as handled.
 
 **Request body** (Paddle Billing `transaction.completed` example)
 ```json
@@ -309,8 +311,7 @@ without re-processing.
 **Response** — always JSON, status reflects retry advice:
 | Status | Body                                       | When                                                  |
 |--------|--------------------------------------------|-------------------------------------------------------|
-| 200    | `{ "ok": true }`                           | New event processed                                   |
-| 200    | `{ "ok": true, "duplicate": true }`        | Event already in `WebhookEvent` (idempotent replay)  |
+| 200    | `{ "ok": true }`                           | Event processed (or idempotent replay)             |
 | 400    | `{ "error": "invalid_json" }`              | Body is not valid JSON after signature check          |
 | 400    | `{ "error": "wrong_event_type", ...}`      | Event_type doesn't match this URL (Paddle will retry) |
 | 401    | `{ "error": "invalid_signature" }`        | Bad/missing/expired `Paddle-Signature`                |
@@ -340,9 +341,9 @@ is persisted on `Order.locale` and used for any future re-sends.
 Receives the Paddle Billing `transaction.updated` event. Currently
 the handler reacts only when the transaction status transitions to a
 refunded / canceled / partially_refunded state: the associated `Order`'s
-status is synced and any `License` rows tied to that order are
-revoked. Other status transitions are recorded in `WebhookEvent` but
-silently ignored.
+status is synced and any `License` rows tied to that order that aren't
+already revoked are revoked (idempotent across repeated refund events).
+Other status transitions are silently ignored.
 
 **Auth, idempotency, error responses**: identical to
 `paddle-transaction-completed`.

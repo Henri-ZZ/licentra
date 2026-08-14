@@ -77,7 +77,7 @@ PUBLIC_KEYS = {
 
 ### 2.5 Paddle webhook 是主渠道，Dashboard 可手动创建
 
-正常售卖：License 由 Paddle 付款事件触发签发，避免"签发了 Key 但没收到钱"的不一致。webhook 幂等：`WebhookEvent.paddleEventId` 唯一索引，重复 event 直接 200 返回。
+正常售卖：License 由 Paddle 付款事件触发签发，避免"签发了 Key 但没收到钱"的不一致。webhook 幂等靠 `Order.paddleTransactionId` 唯一约束 + handler 幂等（无 WebhookEvent 表，Paddle 后台保存投递记录）。
 
 **手动创建**（`POST /api/licenses`，admin）：线下 / 赠送 / 客服补偿等无 Paddle 交易的场景。只填邮箱即可（产品从下拉选），成功弹窗一次性展示 License Key——明文 key 依旧不入库。手创 License **没有 Order 关联**：Paddle 退款 webhook 不会自动吊销它，需要时在 dashboard 手动 Revoke。该端点仅 admin 会话可调。
 
@@ -102,7 +102,7 @@ v1 没有 User 表，`ADMIN_EMAIL` / `ADMIN_PASSWORD` 写死（常量时间比�
   客户端层面：已有证书的客户端 → 目标系统离线验证书 → 换发目标凭据（不再依赖 Licentra API）
 ```
 
-v1 已实现：稳定 `license_id`（= `License.id`，轮换/迁移不变）、key 只存 hash、`SigningKey`（Ed25519 + `kid` + 轮换保留旧键）、公钥发现端点、证书签发（内置在 activate/check-in）、签名批量导出、迁移字段（`sourceSystem/sourceLicenseId/migrationId`）、审计事件。**暂缓**：迁移导入 UI / 批量导入 / 迁移 dashboard（导入是目标系统侧职责）。
+v1 已实现：稳定 `license_id`（= `License.id`，轮换/迁移不变）、key 只存 hash、License 自包含客户信息（`customerId`/`email`）、`SigningKey`（Ed25519 + `kid` + 轮换保留旧键）、公钥发现端点、证书签发（内置在 activate/check-in）、签名批量导出、审计事件（key_rotated / status_changed / migration_exported）。**暂缓**：迁移导入 UI / 批量导入 / 迁移 dashboard（导入是目标系统侧职责）。
 
 ---
 
@@ -111,20 +111,20 @@ v1 已实现：稳定 `license_id`（= `License.id`，轮换/迁移不变）、k
 ```
 Product ─┬─< License ─< Activation
          └─< Order ─< License
-WebhookEvent (独立)
 SigningKey  (Licentra 级 Ed25519 签名键，独立)
 AuditEvent  (生命周期 / 迁移审计，独立)
 ```
 
 | 表             | 关键字段                                                                                                                                                                               |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Product`      | `slug` (unique), `paddleProductId` (unique), `privateKeyEncrypted`, `publicKey`, `publicKeyFingerprint` (unique), `maxActivations`, `emailSubject`/`emailBodyHtml`/`resendFromAddress` |
-| `License`      | `id` (**永久 License 身份**), `keyHash` (unique, **SHA-256(原始 key)，可轮换**), `productId`, `orderId`, `tierId`/`plan`/`expiresAt` (快照), `maxActivations`, `revoked`/`revokedAt`/`revokedReason`, `customerId`/`email`, `metadata`, `sourceSystem`/`sourceLicenseId`/`migrationId`, `emailedAt`/`emailError`/`emailAttempts` |
-| `Activation`   | `licenseId`, `fingerprint` (**SHA-256(原始设备指纹)**, 不是原始值), `label`, `ipAddress`, `userAgent`, `lastCheckedAt`, 唯一 `(licenseId, fingerprint)`                                |
-| `Order`        | `paddleTransactionId` (unique), `paddleEmail`, `productId`, `amount`(分), `currency`, `status`, `rawPayload`(Json)                                                                     |
-| `WebhookEvent` | `paddleEventId` (unique), `eventType`, `processed`, `payload`(Json), `error`                                                                                                           |
+| `Product`      | `slug` (unique), `paddleProductId` (unique), `privateKeyEncrypted`, `publicKey`, `publicKeyFingerprint` (unique), `maxActivations`, `signatureTtlSeconds`, `supportEmail`             |
+| `License`      | `id` (**永久 License 身份**), `keyHash` (unique, **SHA-256(原始 key)，可轮换**), `productId`, `orderId`, `tierId`/`plan`/`expiresAt` (快照), `maxActivations`, `revoked`/`revokedAt`/`revokedReason`, `customerId`/`email`, `emailedAt`/`emailError`/`emailAttempts` |
+| `Activation`   | `licenseId`, `fingerprint` (**SHA-256(原始设备指纹)**, 不是原始值), `label`, `ipAddress`, `browser` (**精简 UA：如 `Chrome 126 · macOS`**), `lastCheckedAt`, 唯一 `(licenseId, fingerprint)` |
+| `Order`        | `paddleTransactionId` (unique), `paddleEmail`, `productId`, `amount`(分), `currency`, `status`, `locale`                                                                                 |
 | `SigningKey`   | `kid` (unique, 如 `licentra-2026-08`), `algorithm`(Ed25519), `privateKeyEncrypted`, `publicKey`, `active`, `retiredAt` — 轮换保留旧键 |
-| `AuditEvent`   | `eventType`(`license.key_rotated` / `license.status_changed` / `license.migration_exported` / `license.migration_certificate_issued`), `licenseId`, `sourceSystem`/`sourceLicenseId`/`destinationSystem`/`migrationId`, `actor`, `metadata` |
+| `AuditEvent`   | `eventType`(`license.key_rotated` / `license.status_changed` / `license.migration_exported`), `licenseId`, `sourceSystem`/`sourceLicenseId`/`destinationSystem`/`migrationId`, `actor`, `metadata` |
+
+> 无 WebhookEvent 表：Paddle 后台保存权威投递记录（含重试与 payload）；幂等靠 `Order.paddleTransactionId` 唯一 + handler 本身幂等。物理表名仍为 `LicenseKey`（`@@map` 保留）。
 
 > 物理表名仍为 `LicenseKey`（`@@map` 保留，`db push` 不会重建表丢数据）；代码模型名已改为 `License`，语义上区分"身份"与"凭据"。
 
@@ -140,47 +140,49 @@ AuditEvent  (生命周期 / 迁移审计，独立)
 客户付款 → Paddle → POST /api/webhook/paddle (transaction.completed)
   │
   ├─ 验签 (HMAC-SHA256 over `${ts}.${rawBody}`, ±5min 时窗)
-  ├─ 幂等检查: WebhookEvent.paddleEventId 已存在 → 200 duplicate
   ├─ 解析 custom_data.productId → 找 Product (要求 privateKeyEncrypted 已就绪)
   │
   ├─ 已有 Order.paddleTransactionId 记录?
-  │   ├─ 是 → 复用, 检查 emailedAt, 没发就重试
-  │   └─ 否 → 继续
+  │   ├─ 是 → 复用, 检查 emailedAt, 没发就重试（幂等）
+  │   └─ 否 → 继续（并发重复投递撞唯一约束 → P2002 → 视为已处理跳过）
   │
-  ├─ prisma.order.create({ paddleTransactionId, paddleEmail, productId, amount, currency, status, rawPayload })
+  ├─ prisma.order.create({ paddleTransactionId, paddleEmail, productId, amount, currency, status, locale })
+  │    ※ 不存完整 Paddle 事件 JSON（Paddle 后台保留投递记录）
   ├─ rawKey = generateLicenseKey()    // K3PQ-W7HN-8YJZ-V9D2
-  ├─ prisma.licenseKey.create({ keyHash: sha256(rawKey), productId, orderId, maxActivations })
+  ├─ prisma.license.create({ keyHash: sha256(rawKey), productId, orderId, tierId/plan/expiresAt, maxActivations, customerId, email })
   │
   ├─ 邮件 (Resend 或 stub):
-  │   渲染 Product.emailSubject / emailBodyHtml
-  │   占位符 {{key}} {{productName}} {{plan}} {{licenseId}} {{maxActivations}}
+  │   渲染 ProductEmailTemplate.subject / bodyHtml
+  │   占位符 {{key}} {{productName}} {{plan}} {{orderId}} {{email}} {{maxActivations}} {{supportEmail}}
   │   发到 paddleEmail
   │   成功 → emailedAt = now
   │   失败 → emailError, emailAttempts++, throw → webhook 返回 500 → Paddle 重试
   │
-  └─ WebhookEvent.processed = true → 200
+  └─ 200
 ```
 
-**重试策略**：
+**重试策略**（无 WebhookEvent 表，幂等靠 Order 唯一 + handler 幂等）：
 
-- 同 `paddleEventId` 重发 → 幂等跳过
-- 同 `paddleTransactionId` 但不同 `paddleEventId`（Paddle 真的会重发整个 transaction）：
-  - `emailedAt != null` → 直接 200
-  - `emailedAt == null` → 重发邮件（**此时原始 key 已丢**——v1 行为：写 `emailError: "raw key not retained across retries"`，要求 admin 在 dashboard 重发）
+- 同 `paddleTransactionId` 重发（Paddle 会重发整个 transaction 或同一事件重试）：
+  - Order 已存在且 `emailedAt != null` → 直接 200
+  - Order 已存在且 `emailedAt == null` → 重发邮件（**此时原始 key 已丢**——v1 行为：写 `emailError: "raw key not retained across retries"`，要求 admin 在 dashboard 重发）
+  - 两个并发首投 → 一个成功，另一个撞 `paddleTransactionId` 唯一约束被捕获为 P2002 → 跳过
 
 ### 4.2 退款流程
 
 Paddle `transaction.updated` + status ∈ {refunded, partially_refunded, canceled, cancelled}：
 
 ```
-WebhookEvent 写入 → handleTransactionUpdated
+handleTransactionUpdated
   ├─ 找 Order (by paddleTransactionId)
+  ├─ 只取尚未 revoked 的 License（幂等：同一退款多次投递不重复处理/不重复审计）
   ├─ prisma.$transaction:
   │   ├─ order.status = tx.status
-  │   └─ 所有关联 LicenseKey:
+  │   └─ 未 revoked 的 License:
   │       revoked = true
   │       revokedAt = now
   │       revokedReason = "refunded"
+  ├─ 每条 License 写一条 audit: license.status_changed
   └─ 已激活设备的客户端下次 check-in 收到 { valid: false, reason: "license_refunded" }
 ```
 
@@ -317,7 +319,7 @@ pnpm tsx scripts/smoke-sign.ts
 
 - 多用户 / 角色权限
 - License API 限流（生产建议加 Upstash Redis；迁移导出端点已用内存限流器兜底）
-- Webhook 重试 UI（dashboard 看 `WebhookEvent.error`）
+- Webhook 重试 UI（Paddle 后台已有投递日志与重试）
 - 邮件模板实时预览
 - 迁移导入 UI / dashboard（导入是目标系统侧职责，Licentra 只负责导出）
 - 测试套件（构建通过；建议加 Vitest + Playwright）

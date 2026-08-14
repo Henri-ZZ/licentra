@@ -55,9 +55,14 @@ export default async function LicenseDetailPage({ params }: PageProps) {
           <Row label="Product" value={license.product?.name ?? "—"} />
           <Row label="Status" value={
             license.revoked ? (
-              <Badge variant="destructive">
-                {license.revokedReason ?? "revoked"}
-              </Badge>
+              <div className="flex items-center gap-1.5">
+                <Badge variant="destructive">revoked</Badge>
+                {license.revokedReason && license.revokedReason !== "revoked" && (
+                  <span className="text-xs text-muted-foreground">
+                    {license.revokedReason}
+                  </span>
+                )}
+              </div>
             ) : (
               <Badge variant="success">active</Badge>
             )
@@ -77,17 +82,6 @@ export default async function LicenseDetailPage({ params }: PageProps) {
           <Row label="Emailed at" value={license.emailedAt?.toISOString() ?? "—"} />
           {license.emailError && (
             <Row label="Last email error" value={license.emailError} />
-          )}
-          {(license.sourceSystem || license.sourceLicenseId || license.migrationId) && (
-            <>
-              <Row label="Source system" value={license.sourceSystem ?? "—"} />
-              <Row label="Source license ID" value={
-                <span className="font-mono text-xs">{license.sourceLicenseId ?? "—"}</span>
-              } />
-              <Row label="Migration ID" value={
-                <span className="font-mono text-xs">{license.migrationId ?? "—"}</span>
-              } />
-            </>
           )}
         </CardContent>
       </Card>
@@ -111,6 +105,7 @@ export default async function LicenseDetailPage({ params }: PageProps) {
                 <TableRow>
                   <TableHead>Label</TableHead>
                   <TableHead>Fingerprint</TableHead>
+                  <TableHead>Browser</TableHead>
                   <TableHead>IP</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead>Last check-in</TableHead>
@@ -122,6 +117,9 @@ export default async function LicenseDetailPage({ params }: PageProps) {
                     <TableCell>{a.label ?? "—"}</TableCell>
                     <TableCell className="font-mono text-xs">
                       {a.fingerprint.slice(0, 16)}…
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {a.browser ?? "—"}
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       {a.ipAddress ?? "—"}

@@ -104,50 +104,81 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                   <TableHead>Product</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Activations</TableHead>
+                  <TableHead>Last activated</TableHead>
+                  <TableHead>Last check-in</TableHead>
                   <TableHead>Emailed</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {licenses.map((l) => (
-                  <TableRow key={l.id}>
-                    <TableCell className="font-mono text-xs">
-                      <Link
-                        href={`/dashboard/licenses/${l.id}`}
-                        className="hover:underline"
-                      >
-                        {l.id}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{l.product?.name ?? "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {l.order?.paddleEmail ?? l.email ?? "—"}
-                    </TableCell>
-                    <TableCell>
-                      {l.activations.length} / {l.maxActivations}
-                    </TableCell>
-                    <TableCell>
-                      {l.emailedAt ? (
-                        <Badge variant="success">sent</Badge>
-                      ) : (
-                        <Badge variant="destructive">pending</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {l.revoked ? (
-                        <Badge variant="destructive">
-                          {l.revokedReason ?? "revoked"}
-                        </Badge>
-                      ) : (
-                        <Badge variant="success">active</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <LicenseRowActions licenseId={l.id} revoked={l.revoked} />
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {licenses.map((l) => {
+                  // activations are ordered by createdAt asc → the last one
+                  // is the most recently registered device.
+                  const lastActivatedAt = l.activations.length
+                    ? l.activations[l.activations.length - 1].createdAt
+                    : null;
+                  const lastCheckedInAt = l.activations.reduce<Date | null>(
+                    (max, a) =>
+                      max === null || a.lastCheckedAt > max
+                        ? a.lastCheckedAt
+                        : max,
+                    null
+                  );
+                  return (
+                    <TableRow key={l.id}>
+                      <TableCell className="font-mono text-xs">
+                        <Link
+                          href={`/dashboard/licenses/${l.id}`}
+                          className="hover:underline"
+                        >
+                          {l.id}
+                        </Link>
+                      </TableCell>
+                      <TableCell>{l.product?.name ?? "—"}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {l.order?.paddleEmail ?? l.email ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        {l.activations.length} / {l.maxActivations}
+                      </TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {fmtTime(lastActivatedAt)}
+                      </TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {fmtTime(lastCheckedInAt)}
+                      </TableCell>
+                      <TableCell>
+                        {l.emailedAt ? (
+                          <Badge variant="success">sent</Badge>
+                        ) : (
+                          <Badge variant="destructive">pending</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {l.revoked ? (
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant="destructive">revoked</Badge>
+                            {l.revokedReason &&
+                              l.revokedReason !== "revoked" && (
+                                <span className="text-xs text-muted-foreground">
+                                  {l.revokedReason}
+                                </span>
+                              )}
+                          </div>
+                        ) : (
+                          <Badge variant="success">active</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <LicenseRowActions
+                          licenseId={l.id}
+                          revoked={l.revoked}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -155,4 +186,9 @@ export default async function LicensesPage({ searchParams }: PageProps) {
       </Card>
     </div>
   );
+}
+
+/** Compact UTC timestamp: "2026-08-14 21:00" or "—" when null. */
+function fmtTime(d: Date | null | undefined): string {
+  return d ? d.toISOString().slice(0, 16).replace("T", " ") : "—";
 }

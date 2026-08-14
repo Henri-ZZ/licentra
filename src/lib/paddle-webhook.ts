@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { env } from "@/lib/env";
@@ -24,8 +25,13 @@ export const FALLBACK_FROM = "Licentra <onboarding@resend.dev>";
 /**
  * Generic Paddle webhook dispatcher. Each event type lives at its own URL
  * (`/api/webhook/paddle-<event-name>`), and each URL passes its expected
- * `event_type` here so we can reject misrouted deliveries with a clean 400
- * before touching the WebhookEvent table.
+ * `event_type` here so we can reject misrouted deliveries with a clean 400.
+ *
+ * There is NO WebhookEvent table: Paddle keeps the authoritative delivery
+ * log (with retries + payloads), and idempotency is handled at the Order
+ * level (`Order.paddleTransactionId` unique) — re-deliveries of the same
+ * transaction find the existing Order and just retry the email if needed.
+ * Handlers themselves are idempotent, so a Paddle retry after a 500 is safe.
  *
  * Ordering:
  *   1. Verify HMAC-SHA256 signature on the raw body.
@@ -33,12 +39,8 @@ export const FALLBACK_FROM = "Licentra <onboarding@resend.dev>";
  *   3. Reject if event_type != expectedEventType (Paddle will keep retrying,
  *      which is what you want when the dashboard is misconfigured to point
  *      the wrong URL at this slot — the failure surfaces in Paddle's UI).
- *   4. Idempotency guard: return `{ ok: true, duplicate: true }` only if a
- *      prior delivery already set processed=true. If a previous attempt
- *      failed (processed=false), re-run the handler so the retry completes.
- *   5. Run the handler.
- *   6. Mark WebhookEvent.processed = true, or .processed = false + error.
- *   7. Return 200 on success; 500 on handler failure so Paddle retries.
+ *   4. Run the handler. Return 200 on success; 500 on failure so Paddle
+ *      retries (transient failures like Resend down / DB hiccups).
  */
 export async function processWebhookEvent<T extends PaddleEvent>(opts: {
   request: NextRequest;
@@ -73,46 +75,17 @@ export async function processWebhookEvent<T extends PaddleEvent>(opts: {
     );
   }
 
-  // Idempotency: skip only if a previous delivery already SUCCEEDED. If a
-  // prior attempt failed (processed=false), re-run the handler so Paddle's
-  // retry can actually finish the work. The handler is itself idempotent at
-  // the Order level (paddleTransactionId unique), so re-running is safe.
-  let row = await prisma.webhookEvent.findUnique({
-    where: { paddleEventId: event.event_id },
-  });
-  if (row?.processed) {
-    return NextResponse.json({ ok: true, duplicate: true });
-  }
-  if (!row) {
-    row = await prisma.webhookEvent.create({
-      data: {
-        paddleEventId: event.event_id,
-        eventType: event.event_type,
-        payload: event as unknown as object,
-        processed: false,
-      },
-    });
-  }
-
   try {
     if (!typeGuard(event)) {
       // Unreachable since we checked event_type above, but keeps TS happy.
       return NextResponse.json({ error: "type_guard_failed" }, { status: 400 });
     }
     await handler(event);
-    await prisma.webhookEvent.update({
-      where: { id: row.id },
-      data: { processed: true, error: null },
-    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await prisma.webhookEvent.update({
-      where: { id: row.id },
-      data: { processed: false, error: message },
-    });
     // 500 makes Paddle retry the event — desired for transient failures
-    // (e.g. Resend down, DB hiccup).
+    // (e.g. Resend down, DB hiccup). Paddle logs the delivery + payload.
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -203,19 +176,33 @@ export async function handleTransactionCompleted(event: PaddleEvent) {
   }
 
   // First time seeing this transaction — create the Order and a License.
-  const order = await prisma.order.create({
-    data: {
-      paddleTransactionId: transactionId,
-      paddleCustomerId: customerId,
-      paddleEmail: customerEmail,
-      locale: paddleLocale,
-      productId: product.id,
-      amount: grandTotal,
-      currency,
-      status: tx.status,
-      rawPayload: event as unknown as object,
-    },
-  });
+  // The full Paddle event is NOT persisted (Paddle keeps the delivery log);
+  // we store only the fields Licentra actually uses.
+  let order: Awaited<ReturnType<typeof prisma.order.create>>;
+  try {
+    order = await prisma.order.create({
+      data: {
+        paddleTransactionId: transactionId,
+        paddleEmail: customerEmail,
+        locale: paddleLocale,
+        productId: product.id,
+        amount: grandTotal,
+        currency,
+        status: tx.status,
+      },
+    });
+  } catch (err) {
+    // Concurrent duplicate delivery: another request (retry / re-delivery)
+    // created this Order between our lookup and create. The unique
+    // paddleTransactionId constraint fired — treat it as handled.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      console.warn(
+        `[webhook] duplicate order create for ${transactionId}; skipping`
+      );
+      return;
+    }
+    throw err;
+  }
 
   const rawKey = generateLicenseKey();
   const { sha256Hex } = await import("@/lib/license-key");
@@ -284,14 +271,19 @@ export async function handleTransactionUpdated(event: PaddleEvent) {
   });
   if (!order) return;
 
+  // Only licenses that are NOT already revoked need the transition (Paddle
+  // may deliver multiple `transaction.updated` events for the same refund —
+  // this keeps both the UPDATE and the audit idempotent).
+  const toRevoke = order.licenses.filter((l) => !l.revoked);
+  if (toRevoke.length === 0) return;
+
   await prisma.$transaction(async (db) => {
     await db.order.update({
       where: { id: order.id },
       data: { status: tx.status },
     });
-    if (order.licenses.length === 0) return;
     await db.license.updateMany({
-      where: { id: { in: order.licenses.map((l) => l.id) } },
+      where: { id: { in: toRevoke.map((l) => l.id) } },
       data: {
         revoked: true,
         revokedAt: new Date(),
@@ -301,8 +293,8 @@ export async function handleTransactionUpdated(event: PaddleEvent) {
   });
 
   // Audit the refund-driven status change (spec §26). Identity unchanged —
-  // only the License state moved to revoked.
-  for (const l of order.licenses) {
+  // only the License state moved to revoked. Written once per license.
+  for (const l of toRevoke) {
     await recordAudit({
       eventType: "license.status_changed",
       licenseId: l.id,

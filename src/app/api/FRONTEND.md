@@ -425,8 +425,8 @@ document with Licentra's public key and imports it — no Licentra API
 needs to stay online afterwards.
 
 **Security** (spec §22): admin session required, per-IP rate limiting
-(10/min), full audit trail (`license.migration_exported` +
-per-license `license.migration_certificate_issued`). Never includes
+(10/min), audit trail (`license.migration_exported` — one row per export;
+the signed document is the per-license record). Never includes
 plaintext License Keys or private signing keys.
 
 **Request body** (all optional)

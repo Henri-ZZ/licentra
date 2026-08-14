@@ -67,12 +67,16 @@ async function main() {
   console.log("\n--- API response shape (payload + signature) ---");
   console.log(JSON.stringify({ valid: response.valid, payload, signature: response.signature.slice(0, 24) + "…" }, null, 2));
 
-  if (!response.signature.startsWith("MEU")) {
+  // DER signatures for ECDSA P-256 start with 0x30 (SEQUENCE). The base64
+  // prefix depends on the total length: 69 bytes → "MEU…", 70 bytes →
+  // "MEY…" (when r or s needs a leading zero byte, ~50% of the time for
+  // each component). Both are valid; do not pin to one.
+  if (!/^ME[UY]/.test(response.signature)) {
     throw new Error(
-      `signature does not start with MEU (DER ECDSA prefix), got "${response.signature.slice(0, 8)}"`
+      `signature does not start with MEU/MEY (DER ECDSA prefix), got "${response.signature.slice(0, 8)}"`
     );
   }
-  console.log("✓ Signature is DER-encoded ECDSA (starts with MEU…)");
+  console.log("✓ Signature is DER-encoded ECDSA (starts with MEU/MEY…)");
 
   const ok = verifyPayload(response.payload, response.signature, publicKeyPem);
   if (!ok) throw new Error("local ECDSA verification failed");

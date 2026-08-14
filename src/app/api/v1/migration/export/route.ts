@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { getSessionEmail } from "@/lib/auth";
-import { recordAudit, recordAuditMany } from "@/lib/audit";
+import { recordAudit } from "@/lib/audit";
 import {
   createSignedMigrationExport,
   loadLicensesForExport,
@@ -81,8 +81,8 @@ export async function POST(request: NextRequest) {
     exportId: migrationId,
   });
 
-  // Audit (spec §26): one export event + one certificate-issued event per
-  // license, batched. actor + migrationId + destination recorded.
+  // Audit (spec §26): a single export event. The signed export document
+  // itself is the authoritative per-license record — no N+1 audit rows.
   await recordAudit({
     eventType: "license.migration_exported",
     migrationId,
@@ -94,15 +94,6 @@ export async function POST(request: NextRequest) {
       productId: parsed.data.productId ?? null,
     },
   });
-  await recordAuditMany(
-    licenses.map((l) => ({
-      eventType: "license.migration_certificate_issued",
-      licenseId: l.id,
-      migrationId,
-      destinationSystem: doc.destination_system,
-      actor: session,
-    }))
-  );
 
   return NextResponse.json(doc);
 }

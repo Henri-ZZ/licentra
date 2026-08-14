@@ -19,7 +19,6 @@ model Product {
   active               Boolean      @default(true)
 
   // ECDSA P-256 key pair
-  signatureAlgorithm   String       @default("ecdsa-p256")
   privateKeyEncrypted  String?
   publicKey            String?
   publicKeyFingerprint String?      @unique
@@ -118,20 +117,11 @@ model License {
   revoked        Boolean      @default(false)
   revokedAt      DateTime?
   revokedReason  String?
-  notes          String?
 
-  // --- Migration-safe fields (spec §3 / §13) ---
-  // Customer identity + contact, self-contained on the License (currently
-  // mirrored from Order.paddleEmail / Paddle customer_id at issue time).
+  // --- Customer contact, self-contained on the License (mirrored from
+  // Order.paddleEmail / Paddle customer_id at issue time) ---
   customerId      String?
   email           String?
-  // Product-specific, non-secret data that may need to survive migration.
-  metadata        Json?
-  // Provenance of a license imported from another system. `migrationId`
-  // groups a batch of imported licenses into one migration event.
-  sourceSystem    String?
-  sourceLicenseId String?
-  migrationId     String?
 
   emailedAt      DateTime?
   emailError     String?
@@ -144,8 +134,6 @@ model License {
   @@index([productId])
   @@index([orderId])
   @@index([tierId])
-  @@index([sourceSystem])
-  @@index([sourceLicenseId])
 
   // Physical table name preserved from the pre-refactor schema so `db push`
   // does not drop/recreate the table (which would lose license data).
@@ -159,7 +147,9 @@ model Activation {
   fingerprint   String
   label         String?
   ipAddress     String?
-  userAgent     String?
+  // Compact browser summary (e.g. "Chrome 126 · macOS") parsed from the
+  // User-Agent at activation time. The raw UA string is NOT stored.
+  browser       String?
   lastCheckedAt DateTime   @default(now())
   createdAt     DateTime   @default(now())
 
@@ -192,7 +182,7 @@ model SigningKey {
 model AuditEvent {
   id                String   @id @default(cuid())
   // e.g. license.key_rotated | license.status_changed |
-  //      license.migration_exported | license.migration_certificate_issued
+  //      license.migration_exported
   eventType         String
   licenseId         String?
   sourceSystem      String?
@@ -209,32 +199,20 @@ model AuditEvent {
 }
 
 model Order {
-  id                  String       @id @default(cuid())
-  paddleTransactionId String       @unique
-  paddleCustomerId    String?
+  id                  String   @id @default(cuid())
+  paddleTransactionId String   @unique
   paddleEmail         String?
   // BCP-47 locale captured from Paddle (e.g. "zh-CN"). Used at email-send
   // time to pick a ProductEmailTemplate by language-code prefix.
   locale              String?
   productId           String?
-  product             Product?     @relation(fields: [productId], references: [id])
+  product             Product? @relation(fields: [productId], references: [id])
   amount              Int
   currency            String
   status              String
-  rawPayload          Json
   licenses            License[]
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@index([paddleEmail])
-}
-
-model WebhookEvent {
-  id            String   @id @default(cuid())
-  paddleEventId String   @unique
-  eventType     String
-  processed     Boolean  @default(false)
-  payload       Json
-  error         String?
-  receivedAt    DateTime @default(now())
 }

@@ -143,9 +143,9 @@ export const openApiSpec = {
           "`ts=<unix-seconds>;h1=<hex>`. HMAC-SHA256 is computed over " +
           "`\"${ts}.${rawBody}\"` using `PADDLE_WEBHOOK_SECRET`. Timestamps " +
           "further than 5 minutes from server time are rejected. " +
-          "Idempotent: every event is keyed by `event_id` in the WebhookEvent " +
-          "table; re-deliveries return `{ ok: true, duplicate: true }` " +
-          "without re-processing. " +
+          "Idempotent at the transaction level (`Order.paddleTransactionId` " +
+          "unique): re-deliveries reuse the existing Order and just retry " +
+          "the license email if it never went out. " +
           "On a fresh event, creates an Order + License for the customer " +
           "and sends the license email. " +
           "Product resolution: `custom_data.productId` (Licentra Product.cuid) " +
@@ -253,13 +253,14 @@ export const openApiSpec = {
         summary: "Paddle — transaction.updated",
         description:
           "Receives the Paddle Billing `transaction.updated` event. " +
-          "Authentication, idempotency, and the WebhookEvent table work the " +
-          "same as `paddle-transaction-completed`. " +
+          "Authentication and idempotency work the same as " +
+          "`paddle-transaction-completed`. " +
           "Currently the handler reacts only when the transaction status " +
           "transitions to a refunded / canceled / partially_refunded state: " +
           "the associated Order's status is synced and any License rows " +
-          "tied to that order are revoked. Other status transitions are " +
-          "recorded but ignored. " +
+          "tied to that order that aren't already revoked are revoked " +
+          "(idempotent across repeated refund events). Other status " +
+          "transitions are ignored. " +
           "Reject with 400 `wrong_event_type` if any other event_type is " +
           "delivered to this URL.",
         parameters: [
