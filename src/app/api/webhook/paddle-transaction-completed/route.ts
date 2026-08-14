@@ -13,7 +13,7 @@ import { isCompletedTransaction } from "@/lib/paddle";
  * "transaction.completed" event slot. Idempotent at both the event level
  * (WebhookEvent.event_id unique) and the transaction level (Order.
  * paddleTransactionId unique). On a successful match, creates an Order +
- * LicenseKey for the customer and sends the license email with the new
+ * License for the customer and sends the license email with the new
  * key. If the customer's Paddle locale matches a non-default template,
  * that template is used; otherwise the product's default (always `en`).
  */

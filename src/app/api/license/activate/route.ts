@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   const userAgent = request.headers.get("user-agent") ?? "";
 
   const result = await prisma.$transaction(async (tx) => {
-    const license = await tx.licenseKey.findUnique({
+    const license = await tx.license.findUnique({
       where: { keyHash },
       include: {
         product: true,
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     // 3) Register the new activation.
     await tx.activation.create({
       data: {
-        licenseKeyId: license.id,
+        licenseId: license.id,
         fingerprint: fpHash,
         label: parsed.data.label,
         ipAddress,
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ valid: false, reason: "license_not_found" });
   }
 
-  return NextResponse.json(buildLicenseResponse(result));
+  return NextResponse.json(await buildLicenseResponse(result));
 }
 
 // Avoid runtime errors when only one fingerprint tries to refresh — the

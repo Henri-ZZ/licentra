@@ -1,6 +1,6 @@
 /**
  * One-shot backfill: create a ProductPriceTier for each existing Product
- * and attach existing LicenseKey rows to that tier.
+ * and attach existing License rows to that tier.
  *
  * Idempotent. Safe to re-run; rows that already exist are skipped.
  *
@@ -21,7 +21,7 @@
  *      Products with no `paddleProductId` set are skipped — those rows are
  *      not sellable on Paddle and admin must add a tier manually.
  *
- *   2. For each LicenseKey whose productId maps to a (now existing) tier,
+ *   2. For each License whose productId maps to a (now existing) tier,
  *      set tierId = the new tier's id, plan = tier.plan, expiresAt = null.
  *
  * Run with:
@@ -70,7 +70,7 @@ async function main() {
       `created tier ${tier.id} (plan="standard") for product ${product.slug}`,
     );
 
-    const result = await prisma.licenseKey.updateMany({
+    const result = await prisma.license.updateMany({
       where: { productId: product.id, tierId: null },
       data: {
         tierId: tier.id,

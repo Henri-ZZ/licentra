@@ -12,7 +12,7 @@ import { isUpdatedTransaction } from "@/lib/paddle";
  * Configure this URL in the Paddle dashboard under the
  * "transaction.updated" event slot. Currently we only react to refund /
  * cancel / partial-refund statuses: the order's status is synced and any
- * LicenseKey rows tied to that order are revoked.
+ * License rows tied to that order are revoked.
  *
  * Other status transitions (e.g. `past_due`) are silently ignored — the
  * event is still recorded in WebhookEvent for audit, but no business

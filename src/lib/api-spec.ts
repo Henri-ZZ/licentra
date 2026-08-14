@@ -25,6 +25,7 @@ export const openApiSpec = {
   tags: [
     { name: "License", description: "Mutated by the customer's product client" },
     { name: "Webhook", description: "Called by Paddle" },
+    { name: "Migration", description: "Public-key discovery for migration partners" },
   ],
   paths: {
     "/api/license/activate": {
@@ -107,6 +108,31 @@ export const openApiSpec = {
       },
     },
 
+    "/api/v1/well-known/licentra-keys": {
+      get: {
+        tags: ["Migration"],
+        summary: "Licentra Ed25519 public keys (certificate verification)",
+        description:
+          "Public-key discovery for Signed License Certificates and migration " +
+          "exports (docs/licentra-offline-migration-spec.md §9). Destination " +
+          "License systems and offline clients fetch the Ed25519 public key " +
+          "matching a certificate's `kid` here to verify it WITHOUT calling " +
+          "the Licentra API. Retired keys stay listed so certificates issued " +
+          "under an old kid remain verifiable after rotation. " +
+          "Public and read-only — no auth, no rate limiting.",
+        responses: {
+          "200": {
+            description: "The current + legacy public key set.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/PublicKeySet" },
+              },
+            },
+          },
+        },
+      },
+    },
+
     "/api/webhook/paddle-transaction-completed": {
       post: {
         tags: ["Webhook"],
@@ -120,7 +146,7 @@ export const openApiSpec = {
           "Idempotent: every event is keyed by `event_id` in the WebhookEvent " +
           "table; re-deliveries return `{ ok: true, duplicate: true }` " +
           "without re-processing. " +
-          "On a fresh event, creates an Order + LicenseKey for the customer " +
+          "On a fresh event, creates an Order + License for the customer " +
           "and sends the license email. " +
           "Product resolution: `custom_data.productId` (Licentra Product.cuid) " +
           "preferred, falls back to Paddle's literal `product_id` matching " +
@@ -231,7 +257,7 @@ export const openApiSpec = {
           "same as `paddle-transaction-completed`. " +
           "Currently the handler reacts only when the transaction status " +
           "transitions to a refunded / canceled / partially_refunded state: " +
-          "the associated Order's status is synced and any LicenseKey rows " +
+          "the associated Order's status is synced and any License rows " +
           "tied to that order are revoked. Other status transitions are " +
           "recorded but ignored. " +
           "Reject with 400 `wrong_event_type` if any other event_type is " +
@@ -387,6 +413,73 @@ export const openApiSpec = {
             description:
               "Base64-encoded ECDSA-DER signature over JSON.stringify(payload). " +
               "Verify using the product's public key (ECDSA P-256 / SHA-256).",
+          },
+          certificate: {
+            $ref: "#/components/schemas/LicenseCertificate",
+            description:
+              "Signed License Certificate (Ed25519, Licentra-level) issued on " +
+              "every successful verification. The client stores it locally so it " +
+              "can migrate offline later without contacting Licentra.",
+          },
+        },
+      },
+
+      LicenseCertificate: {
+        type: "object",
+        required: [
+          "type",
+          "version",
+          "issuer",
+          "kid",
+          "license_id",
+          "product_id",
+          "plan",
+          "status",
+          "max_devices",
+          "issued_at",
+          "expires_at",
+          "nonce",
+          "signature",
+        ],
+        properties: {
+          type: { type: "string", enum: ["licentra_license_certificate"] },
+          version: { type: "integer", enum: [1] },
+          issuer: { type: "string", enum: ["licentra"] },
+          kid: { type: "string", description: "Signing key id, e.g. 'licentra-2026-08'" },
+          license_id: { type: "string", description: "Permanent License Identity" },
+          product_id: { type: "string", description: "Product slug the certificate is bound to" },
+          plan: { type: "string" },
+          status: { type: "string", enum: ["active", "expired", "revoked", "suspended"] },
+          max_devices: { type: "integer" },
+          issued_at: { type: "integer", description: "Unix seconds" },
+          expires_at: { type: ["string", "null"], description: "License expiry (null = lifetime)" },
+          nonce: { type: "string", description: "Replay-protection nonce" },
+          signature: {
+            type: "string",
+            description:
+              "Base64 Ed25519 signature over the canonical JSON of all other " +
+              "fields (fixed field order). Verify with the public key for `kid` " +
+              "from GET /api/v1/well-known/licentra-keys.",
+          },
+        },
+      },
+
+      PublicKeySet: {
+        type: "object",
+        required: ["keys"],
+        properties: {
+          keys: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["kid", "algorithm", "public_key", "active"],
+              properties: {
+                kid: { type: "string" },
+                algorithm: { type: "string", enum: ["Ed25519"] },
+                public_key: { type: "string", description: "PEM-encoded public key" },
+                active: { type: "boolean" },
+              },
+            },
           },
         },
       },

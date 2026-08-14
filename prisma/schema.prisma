@@ -29,7 +29,7 @@ model Product {
   // Resend dev address, when this is null.
   supportEmail         String?
 
-  licenses             LicenseKey[]
+  licenses             License[]
   orders               Order[]
   templates            ProductEmailTemplate[]
   priceTiers           ProductPriceTier[]
@@ -55,7 +55,7 @@ model ProductPriceTier {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  licenses      LicenseKey[]
+  licenses      License[]
 
   @@unique([productId, plan])
   @@unique([productId, paddlePriceId])
@@ -88,7 +88,19 @@ model ProductEmailTemplate {
   @@index([productId])
 }
 
-model LicenseKey {
+model License {
+  // ------------------------------------------------------------------
+  // License Identity vs License Key (see docs/licentra-offline-migration-spec.md)
+  //
+  // `id` is the PERMANENT License Identity. It never changes: not on key
+  // rotation, device changes, or migration. Clients see it as
+  // payload.license_id and as certificate.license_id.
+  //
+  // `keyHash` is the hash of the CURRENT credential (License Key). It is
+  // NOT the identity — rotating a key updates keyHash in place on this
+  // row (see POST /api/licenses/[id]/resend-email), keeping id, device
+  // activations and migration fields untouched.
+  // ------------------------------------------------------------------
   id             String       @id @default(cuid())
   keyHash        String       @unique
   productId      String
@@ -108,6 +120,19 @@ model LicenseKey {
   revokedReason  String?
   notes          String?
 
+  // --- Migration-safe fields (spec §3 / §13) ---
+  // Customer identity + contact, self-contained on the License (currently
+  // mirrored from Order.paddleEmail / Paddle customer_id at issue time).
+  customerId      String?
+  email           String?
+  // Product-specific, non-secret data that may need to survive migration.
+  metadata        Json?
+  // Provenance of a license imported from another system. `migrationId`
+  // groups a batch of imported licenses into one migration event.
+  sourceSystem    String?
+  sourceLicenseId String?
+  migrationId     String?
+
   emailedAt      DateTime?
   emailError     String?
   emailAttempts  Int          @default(0)
@@ -119,12 +144,18 @@ model LicenseKey {
   @@index([productId])
   @@index([orderId])
   @@index([tierId])
+  @@index([sourceSystem])
+  @@index([sourceLicenseId])
+
+  // Physical table name preserved from the pre-refactor schema so `db push`
+  // does not drop/recreate the table (which would lose license data).
+  @@map("LicenseKey")
 }
 
 model Activation {
   id            String     @id @default(cuid())
-  licenseKeyId  String
-  licenseKey    LicenseKey @relation(fields: [licenseKeyId], references: [id], onDelete: Cascade)
+  licenseId     String     @map("licenseKeyId")
+  license       License    @relation(fields: [licenseId], references: [id], onDelete: Cascade)
   fingerprint   String
   label         String?
   ipAddress     String?
@@ -132,8 +163,49 @@ model Activation {
   lastCheckedAt DateTime   @default(now())
   createdAt     DateTime   @default(now())
 
-  @@unique([licenseKeyId, fingerprint])
-  @@index([licenseKeyId])
+  @@unique([licenseId, fingerprint])
+  @@index([licenseId])
+}
+
+/// Licentra-level Ed25519 signing keys used to produce Signed License
+/// Certificates and migration exports (spec §8 / §9). Independent from
+/// per-product ECDSA keys used to sign LicensePayloads. `kid` travels
+/// inside every certificate so destination systems pick the right public
+/// key; rotated keys are retired (not deleted) so previously issued
+/// certificates stay verifiable.
+model SigningKey {
+  id                  String    @id @default(cuid())
+  // e.g. "licentra-2026-08". Unique; rotated keys keep their kid.
+  kid                 String    @unique
+  algorithm           String    @default("Ed25519")
+  privateKeyEncrypted String
+  publicKey           String
+  active              Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  retiredAt           DateTime?
+
+  @@index([active])
+}
+
+/// Immutable audit trail for license lifecycle / migration operations
+/// (spec §26). Never log plaintext License Keys or private keys here.
+model AuditEvent {
+  id                String   @id @default(cuid())
+  // e.g. license.key_rotated | license.status_changed |
+  //      license.migration_exported | license.migration_certificate_issued
+  eventType         String
+  licenseId         String?
+  sourceSystem      String?
+  sourceLicenseId   String?
+  destinationSystem String?
+  migrationId       String?
+  actor             String?
+  metadata          Json?
+  createdAt         DateTime @default(now())
+
+  @@index([licenseId])
+  @@index([eventType])
+  @@index([createdAt])
 }
 
 model Order {
@@ -150,7 +222,7 @@ model Order {
   currency            String
   status              String
   rawPayload          Json
-  licenses            LicenseKey[]
+  licenses            License[]
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 

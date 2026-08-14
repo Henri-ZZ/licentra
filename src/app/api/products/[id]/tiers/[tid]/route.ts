@@ -88,7 +88,7 @@ export async function PATCH(
 /**
  * Delete a PriceTier.
  *
- * Refuses if any LicenseKey still references it — admins should
+ * Refuses if any License still references it — admins should
  * reassign or revoke those licenses first. (We don't auto-revoke because
  * the customer's signature would suddenly stop verifying, which is
  * worse than a hard refusal.)

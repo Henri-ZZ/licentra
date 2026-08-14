@@ -21,16 +21,17 @@ interface PageProps {
 export default async function LicensesPage({ searchParams }: PageProps) {
   const { q, productId } = await searchParams;
 
-  const licenses = await prisma.licenseKey.findMany({
+  const licenses = await prisma.license.findMany({
     where: {
       AND: [
         productId ? { productId } : {},
         // keyHash search is meaningless for the admin (raw key never stored);
-        // searching order email or paddle email instead.
+        // searching order email, license email, or transaction ID instead.
         q
           ? {
               OR: [
                 { order: { paddleEmail: { contains: q, mode: "insensitive" } } },
+                { email: { contains: q, mode: "insensitive" } },
                 { order: { paddleTransactionId: { contains: q } } },
                 { id: { contains: q } },
               ],
@@ -104,7 +105,7 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                     </TableCell>
                     <TableCell>{l.product?.name ?? "—"}</TableCell>
                     <TableCell className="text-muted-foreground">
-                      {l.order?.paddleEmail ?? "—"}
+                      {l.order?.paddleEmail ?? l.email ?? "—"}
                     </TableCell>
                     <TableCell>
                       {l.activations.length} / {l.maxActivations}

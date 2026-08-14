@@ -1,5 +1,6 @@
 import { createPrivateKey, createPublicKey, generateKeyPairSync, sign as cryptoSign, verify as cryptoVerify } from "node:crypto";
 
+import type { LicenseCertificate } from "@/lib/certificate";
 import { decrypt } from "@/lib/crypto";
 
 /**
@@ -42,6 +43,10 @@ export interface LicenseSignedResponse {
   valid: true;
   payload: LicensePayload;
   signature: string;
+  // Signed License Certificate (Ed25519, Licentra-level) issued alongside
+  // the ECDSA payload so the client can later migrate offline (spec §5/§10).
+  // Present on activate/check-in success responses.
+  certificate?: LicenseCertificate;
 }
 
 export interface LicenseInvalidResponse {

@@ -50,8 +50,8 @@ export async function POST(request: NextRequest) {
   // Verify this fingerprint is still bound.
   const activation = await prisma.activation.findUnique({
     where: {
-      licenseKeyId_fingerprint: {
-        licenseKeyId: license.id,
+      licenseId_fingerprint: {
+        licenseId: license.id,
         fingerprint: fpHash,
       },
     },
@@ -66,5 +66,5 @@ export async function POST(request: NextRequest) {
     data: { lastCheckedAt: new Date() },
   });
 
-  return NextResponse.json(buildLicenseResponse(license));
+  return NextResponse.json(await buildLicenseResponse(license));
 }

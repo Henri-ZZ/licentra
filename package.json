@@ -9,7 +9,8 @@
     "postinstall": "prisma generate && tsx scripts/copy-swagger-assets.ts",
     "db:push": "prisma db push",
     "backfill:templates": "tsx scripts/backfill-email-templates.ts",
-    "backfill:tiers": "tsx scripts/migrate-product-tiers.ts"
+    "backfill:tiers": "tsx scripts/migrate-product-tiers.ts",
+    "bootstrap:signing-key": "tsx scripts/bootstrap-signing-key.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

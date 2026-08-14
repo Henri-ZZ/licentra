@@ -19,7 +19,7 @@ interface PageProps {
 
 export default async function LicenseDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const license = await prisma.licenseKey.findUnique({
+  const license = await prisma.license.findUnique({
     where: { id },
     include: {
       product: true,
@@ -35,6 +35,10 @@ export default async function LicenseDetailPage({ params }: PageProps) {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">License</h1>
           <p className="font-mono text-xs text-muted-foreground">{license.id}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            License ID is the permanent identity — it never changes when the
+            key is rotated or the license migrates.
+          </p>
         </div>
         <LicenseRowActions licenseId={license.id} revoked={license.revoked} />
       </div>
@@ -43,7 +47,8 @@ export default async function LicenseDetailPage({ params }: PageProps) {
         <CardHeader>
           <CardTitle>Status</CardTitle>
           <CardDescription>
-            The raw key is never stored. If lost, regenerate below.
+            The raw key is never stored. If lost, rotate it below — the
+            license identity and device activations are preserved.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
@@ -57,8 +62,11 @@ export default async function LicenseDetailPage({ params }: PageProps) {
               <Badge variant="success">active</Badge>
             )
           } />
+          <Row label="Plan" value={license.plan ?? "—"} />
           <Row label="Max activations" value={license.maxActivations.toString()} />
-          <Row label="Customer email" value={license.order?.paddleEmail ?? "—"} />
+          <Row label="Expires" value={license.expiresAt?.toISOString() ?? "lifetime"} />
+          <Row label="Customer email" value={license.order?.paddleEmail ?? license.email ?? "—"} />
+          <Row label="Customer ID" value={license.customerId ?? "—"} />
           <Row label="Paddle transaction" value={
             <span className="font-mono text-xs">{license.order?.paddleTransactionId ?? "—"}</span>
           } />
@@ -69,6 +77,17 @@ export default async function LicenseDetailPage({ params }: PageProps) {
           <Row label="Emailed at" value={license.emailedAt?.toISOString() ?? "—"} />
           {license.emailError && (
             <Row label="Last email error" value={license.emailError} />
+          )}
+          {(license.sourceSystem || license.sourceLicenseId || license.migrationId) && (
+            <>
+              <Row label="Source system" value={license.sourceSystem ?? "—"} />
+              <Row label="Source license ID" value={
+                <span className="font-mono text-xs">{license.sourceLicenseId ?? "—"}</span>
+              } />
+              <Row label="Migration ID" value={
+                <span className="font-mono text-xs">{license.migrationId ?? "—"}</span>
+              } />
+            </>
           )}
         </CardContent>
       </Card>

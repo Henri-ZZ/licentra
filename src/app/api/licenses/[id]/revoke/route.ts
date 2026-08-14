@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { getSessionEmail } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 
 const paramsSchema = z.object({
@@ -37,19 +38,33 @@ export async function POST(
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  const license = await prisma.licenseKey.findUnique({
+  const license = await prisma.license.findUnique({
     where: { id: parsedParams.data.id },
   });
   if (!license) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const updated = await prisma.licenseKey.update({
+  const reason = parsedBody.data.reason ?? "admin_action";
+  const updated = await prisma.license.update({
     where: { id: license.id },
     data: {
       revoked: true,
       revokedAt: new Date(),
-      revokedReason: parsedBody.data.reason ?? "admin_action",
+      revokedReason: reason,
+    },
+  });
+
+  // Audit the status transition (spec §26). The License Identity is
+  // unchanged — only the state moved.
+  await recordAudit({
+    eventType: "license.status_changed",
+    licenseId: license.id,
+    actor: session,
+    metadata: {
+      from: "active",
+      to: "revoked",
+      reason,
     },
   });
 

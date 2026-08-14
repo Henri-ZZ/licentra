@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { getSessionEmail } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 import {
   isResendStubMode,
   sendLicenseEmail,
@@ -13,11 +14,15 @@ import { prisma } from "@/lib/prisma";
 const FALLBACK_FROM = "Licentra <onboarding@resend.dev>";
 
 /**
- * Re-send the license email for a LicenseKey.
+ * Re-send the license email for a License.
  *
- * IMPORTANT: the raw key is not stored anywhere. To re-send, the admin
- * must already have a copy (from the original send), or we generate a
- * new key + revoke the old one. v1 implementation: regenerate and revoke.
+ * The raw key is never stored anywhere, so a re-send issues a NEW key.
+ * CRITICAL (spec §4 / §27.2): this ROTATES the credential hash IN PLACE on
+ * the same License row — `id` (the License Identity), device activations,
+ * tier snapshot and migration fields are all preserved. We never create a
+ * new License row for a key rotation, and never treat the key hash as the
+ * identity. The old key stops matching the stored hash immediately, which
+ * is the intended invalid state.
  *
  * Template selection: prefer the customer's `Order.locale` (captured at
  * Paddle checkout) over the admin's browser locale. Falls back to the
@@ -34,7 +39,7 @@ export async function POST(
 
   const { id } = await context.params;
 
-  const license = await prisma.licenseKey.findUnique({
+  const license = await prisma.license.findUnique({
     where: { id },
     include: {
       product: { include: { templates: true } },
@@ -52,7 +57,7 @@ export async function POST(
     );
   }
 
-  const customerEmail = license.order?.paddleEmail;
+  const customerEmail = license.order?.paddleEmail ?? license.email;
   if (!customerEmail) {
     return NextResponse.json(
       { error: "no_customer_email_on_order" },
@@ -60,34 +65,19 @@ export async function POST(
     );
   }
 
-  // Generate a new key (the old one is unknown to us now) and revoke it.
+  // Generate a fresh credential and rotate the hash on the SAME License
+  // row — identity (id), activations and migration fields are untouched.
   const { generateLicenseKey, sha256Hex } = await import("@/lib/license-key");
   const newRawKey = generateLicenseKey();
   const newHash = sha256Hex(newRawKey);
 
-  // Find the oldest active license on the same order and revoke it.
-  // For multi-license orders we'd handle differently; v1 keeps it 1:1.
-  await prisma.licenseKey.update({
+  await prisma.license.update({
     where: { id: license.id },
     data: {
-      revoked: true,
-      revokedAt: new Date(),
-      revokedReason: "resend_superseded",
-    },
-  });
-
-  const newLicense = await prisma.licenseKey.create({
-    data: {
       keyHash: newHash,
-      productId: license.productId,
-      // Carry the tier snapshot forward so the replacement license is
-      // indistinguishable from the original in the signed payload.
-      tierId: license.tierId,
-      plan: license.plan,
-      expiresAt: license.expiresAt,
-      orderId: license.orderId,
-      maxActivations: license.maxActivations,
       emailedAt: null,
+      emailError: null,
+      emailAttempts: 0,
     },
   });
 
@@ -111,24 +101,32 @@ export async function POST(
         code: newRawKey,
         productName: license.product.name,
         plan: license.plan ?? "",
-        orderId: newLicense.id,
+        orderId: license.orderId ?? license.id,
         email: customerEmail,
         maxActivations: license.maxActivations,
         supportEmail: license.product.supportEmail ?? env.SUPPORT_EMAIL,
       },
     });
-    await prisma.licenseKey.update({
-      where: { id: newLicense.id },
+    await prisma.license.update({
+      where: { id: license.id },
       data: { emailedAt: new Date(), emailError: null },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await prisma.licenseKey.update({
-      where: { id: newLicense.id },
+    await prisma.license.update({
+      where: { id: license.id },
       data: { emailError: message, emailAttempts: { increment: 1 } },
     });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, licenseId: newLicense.id });
+  // Audit the credential rotation (spec §26). License Identity unchanged.
+  await recordAudit({
+    eventType: "license.key_rotated",
+    licenseId: license.id,
+    actor: session,
+    metadata: { reason: "resend_email" },
+  });
+
+  return NextResponse.json({ ok: true, licenseId: license.id });
 }

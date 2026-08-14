@@ -135,7 +135,7 @@ Plan / price-tier fields live on `ProductPriceTier` and are managed via
 
 ### `DELETE /api/products/[id]`
 
-Delete a product. Refuses if any LicenseKey rows exist for it (revoke or
+Delete a product. Refuses if any License rows exist for it (revoke or
 delete those first).
 
 **Responses**
@@ -315,7 +315,7 @@ create a new tier and migrate licenses over.
 
 ### `DELETE /api/products/[id]/tiers/[tid]`
 
-Delete a tier. Refuses with 409 if any `LicenseKey` row still references
+Delete a tier. Refuses with 409 if any `License` row still references
 it — revoke those licenses or reassign them to another tier first.
 
 **Path params**: `id` (Product cuid), `tid` (PriceTier cuid)
@@ -326,7 +326,7 @@ it — revoke those licenses or reassign them to another tier first.
 | 200    | `{ "ok": true }`                      |                                      |
 | 401    | `{ "error": "unauthorized" }`         |                                      |
 | 404    | `{ "error": "not_found" }`            |                                      |
-| 409    | `{ "error": "tier_has_licenses" }`    | At least one `LicenseKey.tierId` points here |
+| 409    | `{ "error": "tier_has_licenses" }`    | At least one `License.tierId` points here |
 
 ---
 
@@ -335,10 +335,13 @@ it — revoke those licenses or reassign them to another tier first.
 ### `POST /api/licenses/[id]/resend-email`
 
 Re-send the license email to the customer. Because the raw key is never
-stored, this **generates a new key, revokes the old one, and emails the
-new one**. The old key becomes invalid immediately.
+stored, this **rotates the License Key in place**: the same License row
+keeps its `id` (License Identity), device activations and migration
+fields — only `keyHash` is replaced with a fresh credential, which is
+then emailed. The old key stops matching the stored hash immediately.
+The rotation is recorded in the audit trail (`license.key_rotated`).
 
-**Path params**: `id` (LicenseKey cuid)
+**Path params**: `id` (License cuid)
 
 **Template selection**: `Order.locale` (captured at Paddle checkout) →
 matched against `ProductEmailTemplate.locale` by `-`-prefix; falls back
@@ -349,20 +352,22 @@ to the product's `isDefault` template (always `en`).
 **Responses**
 | Status | Body                                              | Notes                                            |
 |--------|---------------------------------------------------|--------------------------------------------------|
-| 200    | `{ "ok": true, "licenseId": "<newLicenseId>" }`   |                                                  |
+| 200    | `{ "ok": true, "licenseId": "<same license id>" }` | Identity unchanged; key rotated + emailed        |
 | 400    | `{ "error": "invalid_params" }`                   |                                                  |
 | 400    | `{ "error": "product_has_no_signing_key" }`       | Generate a signing key for the product first     |
 | 400    | `{ "error": "no_customer_email_on_order" }`       | Order has no Paddle email — re-send manually      |
 | 401    | `{ "error": "unauthorized" }`                     |                                                  |
 | 404    | `{ "error": "not_found" }`                        |                                                  |
-| 500    | `{ "error": "<resend message>" }`                 | Email send failed; old key is already revoked    |
+| 500    | `{ "error": "<resend message>" }`                 | Email send failed; the new key was already rotated in |
 
 ### `POST /api/licenses/[id]/revoke`
 
 Mark a license as revoked. Activations are kept on disk for audit but
 the key will fail `validate` / `activate` / `check-in` calls afterwards.
+The transition is recorded in the audit trail
+(`license.status_changed`).
 
-**Path params**: `id` (LicenseKey cuid)
+**Path params**: `id` (License cuid)
 
 **Request body** (optional)
 ```json
@@ -372,7 +377,57 @@ the key will fail `validate` / `activate` / `check-in` calls afterwards.
 **Responses**
 | Status | Body                                              |
 |--------|---------------------------------------------------|
-| 200    | `{ "ok": true, "license": LicenseKey }`           |
+| 200    | `{ "ok": true, "license": License }`           |
 | 400    | `{ "error": "invalid_params" \| "invalid_body", … }` |
 | 401    | `{ "error": "unauthorized" }`                     |
 | 404    | `{ "error": "not_found" }`                        |
+
+---
+
+## Migration
+
+### `POST /api/v1/migration/export`
+
+Create a **signed bulk migration export** (spec §13 Part A / §21): one
+Ed25519-signed document containing the selected License state
+(`license_id`, `product_id`, `plan`, `status`, `max_devices`,
+`expires_at`, `created_at`). The destination License system verifies the
+document with Licentra's public key and imports it — no Licentra API
+needs to stay online afterwards.
+
+**Security** (spec §22): admin session required, per-IP rate limiting
+(10/min), full audit trail (`license.migration_exported` +
+per-license `license.migration_certificate_issued`). Never includes
+plaintext License Keys or private signing keys.
+
+**Request body** (all optional)
+```json
+{
+  "productId": "<Product cuid — omit to export all products>",
+  "licenseIds": ["<License cuid>", "…"],
+  "destinationSystem": "new-license-system",
+  "includeCustomerData": false,
+  "migrationId": "migration_2026_08_14"
+}
+```
+
+| Field               | Type     | Notes                                                  |
+|---------------------|----------|--------------------------------------------------------|
+| productId           | string?  | Filter by product                                      |
+| licenseIds          | array?   | Filter by specific licenses (max 10000)                |
+| destinationSystem   | string?  | Recorded in the signed doc + audit                     |
+| includeCustomerData | boolean? | Adds `email`/`customer_id` per license (§13 "if needed") |
+| migrationId         | string?  | Auto-generated when omitted; used for duplicate-import prevention |
+
+**Responses**
+| Status | Body                                                                 |
+|--------|----------------------------------------------------------------------|
+| 200    | `{ "type": "licentra_license_migration_export", …, "signature": "…" }` |
+| 400    | `{ "error": "invalid_payload", "details": {…} }`                    |
+| 401    | `{ "error": "unauthorized" }`                                       |
+| 404    | `{ "error": "no_licenses" }`                                        |
+| 429    | `{ "error": "rate_limited", "retryAfterSeconds": n }`               |
+
+Verification of the exported document is documented in
+`docs/licentra-offline-migration-spec.md` §28. Public keys are served at
+`GET /api/v1/well-known/licentra-keys`.

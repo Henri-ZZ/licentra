@@ -40,7 +40,22 @@ Both endpoints take a license key (the customer's copy, e.g.
     "license_expires_at": null,
     "valid_until": "2026-08-14T16:00:00.000Z"
   },
-  "signature": "base64-encoded ECDSA-DER signature over JSON.stringify(payload)"
+  "signature": "base64-encoded ECDSA-DER signature over JSON.stringify(payload)",
+  "certificate": {
+    "type": "licentra_license_certificate",
+    "version": 1,
+    "issuer": "licentra",
+    "kid": "licentra-2026-08",
+    "license_id": "cmsabc123…",
+    "product_id": "stealth-browser-assistant",
+    "plan": "standard",
+    "status": "active",
+    "max_devices": 3,
+    "issued_at": 1786700000,
+    "expires_at": null,
+    "nonce": "…",
+    "signature": "base64 Ed25519 signature"
+  }
 }
 ```
 
@@ -52,6 +67,100 @@ The client should:
    stale — go back online to re-verify (so refunds / revocations take
    effect).
 4. Treat `valid: false` as "deny" regardless of `reason`.
+
+### Signed License Certificate
+
+The `certificate` field is a **Signed License Certificate** — an Ed25519
+signature by Licentra's own signing key proving the License Identity and
+state. It is issued on every successful verification and is intended to be
+**stored locally** by the client.
+
+Its purpose is **offline migration**: if Licentra is later shut down, the
+client can present this certificate to a destination License system, which
+verifies it with Licentra's *public* key (no Licentra API call) and issues
+a new credential. See `docs/licentra-offline-migration-spec.md`.
+
+- The certificate is a **snapshot** — an old certificate may verify even
+  after a revocation. Products that need real-time revocation must keep
+  doing online check-ins while Licentra exists.
+- `kid` selects which public key to verify with; keys are published at
+  `GET /api/v1/well-known/licentra-keys` and retired keys stay listed.
+- Verification logic (canonical JSON field order, Ed25519) is frozen and
+  versioned (`version: 1`).
+
+#### Verifying a certificate (reference)
+
+Signature validity alone is not enough — check the semantic fields too
+(spec §11): `version`, `product_id`, `status`, `expires_at`.
+
+**Canonical serialization (critical).** The Ed25519 signature covers
+`JSON.stringify()` of the fields below **in this exact order**,
+`signature` excluded. Reordering or including `signature` breaks
+verification:
+
+```text
+type → version → issuer → kid → license_id → product_id → plan
+     → status → max_devices → issued_at → expires_at → nonce
+```
+
+Reference implementation (Node; the same logic applies in any language —
+Ed25519 verification, key order fixed):
+
+```js
+import { createPublicKey, verify as cryptoVerify } from "node:crypto";
+
+// Fetch once and cache by kid: GET /api/v1/well-known/licentra-keys
+// (embed at build time if you need fully offline verification).
+const PUBLIC_KEYS = {
+  "licentra-2026-08": `-----BEGIN PUBLIC KEY-----\n…\n-----END PUBLIC KEY-----`,
+};
+
+function canonicalBytes(cert) {
+  // Field order is frozen — do NOT reorder and do NOT include signature.
+  return Buffer.from(JSON.stringify({
+    type: cert.type,
+    version: cert.version,
+    issuer: cert.issuer,
+    kid: cert.kid,
+    license_id: cert.license_id,
+    product_id: cert.product_id,
+    plan: cert.plan,
+    status: cert.status,
+    max_devices: cert.max_devices,
+    issued_at: cert.issued_at,
+    expires_at: cert.expires_at,
+    nonce: cert.nonce,
+  }), "utf8");
+}
+
+// Returns "ok" or a machine-readable reason.
+function verifyCertificate(cert, expectedProductId) {
+  if (cert.type !== "licentra_license_certificate") return "wrong_type";
+  if (cert.version !== 1) return "unsupported_version";
+  const publicKeyPem = PUBLIC_KEYS[cert.kid];
+  if (!publicKeyPem) return "unknown_kid"; // rotated / never seen — reject
+  const ok = cryptoVerify(
+    null, // Ed25519 does its own hashing
+    canonicalBytes(cert),
+    createPublicKey(publicKeyPem),
+    Buffer.from(cert.signature, "base64"),
+  );
+  if (!ok) return "bad_signature";
+  if (cert.product_id !== expectedProductId) return "product_mismatch";
+  if (cert.status !== "active") return "bad_status"; // or your policy
+  if (cert.expires_at && Date.parse(cert.expires_at) <= Date.now()) {
+    return "expired";
+  }
+  return "ok";
+}
+```
+
+- **Refresh**: every successful activate/check-in returns a fresh
+  certificate — just overwrite the stored copy (spec §19; the refresh
+  interval is product-dependent, there is no hard-coded TTL).
+- **Migration**: when a destination system asks, present the stored
+  certificate; it verifies the same way with Licentra's public key —
+  no Licentra API call needed.
 
 **Note on `license_expires_at`**: always `null` in v1. Reserved for future
 subscription-expiry support. It is the license's business-level expiry,
@@ -157,7 +266,7 @@ Both endpoints share the same authentication, idempotency, and
 ### `POST /api/webhook/paddle-transaction-completed`
 
 Receives the Paddle Billing `transaction.completed` event. Creates the
-`Order` + `LicenseKey` and sends the customer email with the new key.
+`Order` + `License` and sends the customer email with the new key.
 
 **Auth**: `Paddle-Signature` header. Format: `ts=<unix-seconds>;h1=<hex>`.
 HMAC is computed as `HMAC-SHA256(PADDLE_WEBHOOK_SECRET, "${ts}.${rawBody}")`.
@@ -231,7 +340,7 @@ is persisted on `Order.locale` and used for any future re-sends.
 Receives the Paddle Billing `transaction.updated` event. Currently
 the handler reacts only when the transaction status transitions to a
 refunded / canceled / partially_refunded state: the associated `Order`'s
-status is synced and any `LicenseKey` rows tied to that order are
+status is synced and any `License` rows tied to that order are
 revoked. Other status transitions are recorded in `WebhookEvent` but
 silently ignored.
 
@@ -260,3 +369,33 @@ one for `transaction.updated` pointed at
 `https://<your-host>/api/webhook/paddle-transaction-updated`. Use
 the `PADDLE_WEBHOOK_SECRET` from your `.env.local` as the signing
 secret on each.
+
+---
+
+# Part 3 — Migration (public key discovery)
+
+### `GET /api/v1/well-known/licentra-keys`
+
+Licentra's public key discovery endpoint (spec §9). Destination License
+systems and offline clients fetch the Ed25519 public key matching a
+certificate's `kid` here. **Public and read-only** — no auth.
+
+**Response**
+```json
+{
+  "keys": [
+    {
+      "kid": "licentra-2026-08",
+      "algorithm": "Ed25519",
+      "public_key": "-----BEGIN PUBLIC KEY-----\n…",
+      "active": true
+    }
+  ]
+}
+```
+
+- Keys are listed oldest first; retired keys stay listed with
+  `active: false` so certificates issued under an old `kid` remain
+  verifiable after rotation.
+- Verification procedure for migration partners is documented in
+  `docs/licentra-offline-migration-spec.md` §28.

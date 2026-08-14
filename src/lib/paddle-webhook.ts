@@ -16,6 +16,7 @@ import {
   stubSendLicenseEmail,
 } from "@/lib/email";
 import { extractPaddleLocale, pickTemplate } from "@/lib/locale";
+import { recordAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 
 export const FALLBACK_FROM = "Licentra <onboarding@resend.dev>";
@@ -149,7 +150,7 @@ export async function handleTransactionCompleted(event: PaddleEvent) {
   // The webhook payload doesn't carry the customer's email or locale. Fetch
   // both from the Paddle API by customer_id — email is the only delivery
   // channel for the license, so fail fast (before creating any Order/
-  // LicenseKey) when we can't resolve it.
+  // License) when we can't resolve it.
   const customer = await fetchCustomer(customerId);
   if (!customer) {
     throw new Error(
@@ -166,7 +167,7 @@ export async function handleTransactionCompleted(event: PaddleEvent) {
   const currency = tx.details?.totals?.currency_code ?? "USD";
 
   // Idempotency at the Order level: if we've already saved this transaction,
-  // reuse the existing Order/LicenseKey and just retry the email.
+  // reuse the existing Order/License and just retry the email.
   const existingOrder = await prisma.order.findUnique({
     where: { paddleTransactionId: transactionId },
     include: {
@@ -201,7 +202,7 @@ export async function handleTransactionCompleted(event: PaddleEvent) {
     return;
   }
 
-  // First time seeing this transaction — create the Order and a LicenseKey.
+  // First time seeing this transaction — create the Order and a License.
   const order = await prisma.order.create({
     data: {
       paddleTransactionId: transactionId,
@@ -235,7 +236,7 @@ export async function handleTransactionCompleted(event: PaddleEvent) {
       ? null
       : new Date(Date.now() + tier.expiresInDays * 24 * 60 * 60 * 1000);
 
-  const license = await prisma.licenseKey.create({
+  const license = await prisma.license.create({
     data: {
       keyHash: sha256Hex(rawKey),
       productId: product.id,
@@ -244,6 +245,11 @@ export async function handleTransactionCompleted(event: PaddleEvent) {
       expiresAt,
       orderId: order.id,
       maxActivations: product.maxActivations,
+      // Mirror customer identity onto the License so it is self-contained
+      // for migration (spec §13: customer_id + email travel with the
+      // License state). The License ID (cuid) stays the permanent identity.
+      customerId: customerId ?? null,
+      email: customerEmail,
     },
   });
 
@@ -284,7 +290,7 @@ export async function handleTransactionUpdated(event: PaddleEvent) {
       data: { status: tx.status },
     });
     if (order.licenses.length === 0) return;
-    await db.licenseKey.updateMany({
+    await db.license.updateMany({
       where: { id: { in: order.licenses.map((l) => l.id) } },
       data: {
         revoked: true,
@@ -293,6 +299,21 @@ export async function handleTransactionUpdated(event: PaddleEvent) {
       },
     });
   });
+
+  // Audit the refund-driven status change (spec §26). Identity unchanged —
+  // only the License state moved to revoked.
+  for (const l of order.licenses) {
+    await recordAudit({
+      eventType: "license.status_changed",
+      licenseId: l.id,
+      metadata: {
+        from: "active",
+        to: "revoked",
+        reason: "refunded",
+        transactionStatus: tx.status,
+      },
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -373,7 +394,7 @@ interface ProductForEmail {
 
 /**
  * Sends the license email to the customer. Updates emailedAt / emailError
- * on the LicenseKey row. If rawKey is not provided, we look up the existing
+ * on the License row. If rawKey is not provided, we look up the existing
  * license key from the database (we only have the hash, so this path is
  * intentionally best-effort — see plan).
  */
@@ -387,7 +408,7 @@ async function sendLicenseEmailForLicense(p: SendLicenseEmailParams) {
     console.warn(
       `[webhook] no raw key to resend for license ${p.licenseId}; admin must manually reset`
     );
-    await prisma.licenseKey.update({
+    await prisma.license.update({
       where: { id: p.licenseId },
       data: {
         emailError: "raw key not retained across retries",
@@ -398,7 +419,7 @@ async function sendLicenseEmailForLicense(p: SendLicenseEmailParams) {
   }
 
   if (!p.customerEmail) {
-    await prisma.licenseKey.update({
+    await prisma.license.update({
       where: { id: p.licenseId },
       data: {
         emailError: "no customer email on transaction",
@@ -409,7 +430,7 @@ async function sendLicenseEmailForLicense(p: SendLicenseEmailParams) {
   }
 
   if (!p.product) {
-    await prisma.licenseKey.update({
+    await prisma.license.update({
       where: { id: p.licenseId },
       data: {
         emailError: "product missing",
@@ -443,7 +464,7 @@ async function sendLicenseEmailForLicense(p: SendLicenseEmailParams) {
         supportEmail: p.product.supportEmail ?? env.SUPPORT_EMAIL,
       },
     });
-    await prisma.licenseKey.update({
+    await prisma.license.update({
       where: { id: p.licenseId },
       data: {
         emailedAt: new Date(),
@@ -453,7 +474,7 @@ async function sendLicenseEmailForLicense(p: SendLicenseEmailParams) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await prisma.licenseKey.update({
+    await prisma.license.update({
       where: { id: p.licenseId },
       data: {
         emailError: message,

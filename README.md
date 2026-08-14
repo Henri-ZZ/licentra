@@ -118,13 +118,34 @@ Success response shape:
     "license_expires_at": null,
     "valid_until": "2026-08-14T16:00:00.000Z"
   },
-  "signature": "MEUCIQ..."
+  "signature": "MEUCIQ...",
+  "certificate": {
+    "type": "licentra_license_certificate",
+    "version": 1,
+    "issuer": "licentra",
+    "kid": "licentra-2026-08",
+    "license_id": "abc123",
+    "product_id": "stealth-browser-assistant",
+    "plan": "pro",
+    "status": "active",
+    "max_devices": 3,
+    "issued_at": 1786700000,
+    "expires_at": null,
+    "nonce": "...",
+    "signature": "base64 Ed25519 signature"
+  }
 }
 ```
 
-The signature is ECDSA P-256 over `JSON.stringify(payload)`, hashed with
+The `signature` is ECDSA P-256 over `JSON.stringify(payload)`, hashed with
 SHA-256, encoded as DER, then base64. Each product has its own key pair;
 the client picks the public key by `payload.product`.
+
+The `certificate` is a **Signed License Certificate** — Ed25519-signed by
+Licentra's own key, proving the License Identity and state. Clients store
+it locally so they can migrate to a future License system offline (see
+`docs/licentra-offline-migration-spec.md`). Its public keys are published
+at `GET /api/v1/well-known/licentra-keys`.
 
 ### Client verification (reference)
 
@@ -157,6 +178,13 @@ function verifyLicense(response) {
 > server-side key order (`product → plan → license_id → license_expires_at → valid_until`) is
 > what determines the canonical bytes.
 
+> **Certificate verification (reference)**: the Ed25519 verification for
+> `certificate` — including its canonical field order and semantic checks
+> (`product_id`, `status`, `expires_at`, `version`, `kid`) — is documented
+> with runnable code in `src/app/api/EXTERNAL.md` → "Signed License
+> Certificate → Verifying a certificate (reference)". Store the certificate
+> from each successful activate/check-in response for offline migration.
+
 ## Security model
 
 - **License keys** are 16 chars from a 32-symbol alphabet (≈95 bits of
@@ -172,6 +200,35 @@ function verifyLicense(response) {
   with `LICENSE_MASTER_KEY` before being persisted.
 - **Fingerprints** are hashed before storage so a DB leak doesn't
   expose raw device identifiers.
+- **Migration** does not depend on Licentra staying online: every
+  successful verification returns a Signed License Certificate (Ed25519)
+  the client stores locally; an admin-only `POST /api/v1/migration/export`
+  produces a signed bulk export. Destination systems verify both with
+  Licentra's public keys from `GET /api/v1/well-known/licentra-keys`.
+  License ID is the permanent identity — rotating a License Key updates
+  the hash in place and never creates a new License row or drops device
+  activations.
+
+## Migration
+
+See `docs/licentra-offline-migration-spec.md` for the full protocol. The
+short version:
+
+```text
+License Key      → credential (only its SHA-256 is stored)
+License ID       → permanent identity (License.id, never changes)
+Signed Certificate → portable proof (Ed25519, verifiable offline)
+```
+
+- **Certificate issuance** is part of normal activate/check-in — no extra
+  call needed.
+- **Public keys** (including retired ones after rotation) are served at
+  `GET /api/v1/well-known/licentra-keys`.
+- **Bulk export** (`POST /api/v1/migration/export`, admin session + rate
+  limited) returns one signed document covering all License state.
+- **Key rotation** (`POST /api/licenses/[id]/resend-email`) rotates the
+  credential hash in place — the License Identity and device activations
+  are preserved.
 
 ## Smoke test
 
@@ -180,7 +237,8 @@ pnpm tsx scripts/smoke-sign.ts
 ```
 
 Verifies (without a database) that the licensing pipeline produces a
-correctly-shaped signed response and that the same keys can verify it.
+correctly-shaped signed response and that the same keys can verify it —
+including the Ed25519 certificate and signed migration export.
 Should print `🎉 All smoke checks passed.`
 
 ## Not in scope (yet)
@@ -189,5 +247,6 @@ Should print `🎉 All smoke checks passed.`
 - License API rate limiting (recommend Upstash Redis in production)
 - Webhook retry UI (dashboard shows last error per event)
 - Email templates live preview
-- Audit log for activation events
+- Migration import UI / migration dashboard (import is destination-side;
+  Licentra only exports)
 - Test suite (build currently passes; recommend Vitest + Playwright)

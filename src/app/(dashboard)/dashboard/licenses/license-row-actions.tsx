@@ -50,7 +50,9 @@ export function LicenseRowActions({
         toast.error(`Failed to resend: ${body.error ?? res.status}`);
         return;
       }
-      toast.success("Email sent (old license revoked, new key generated)");
+      toast.success(
+        "Email sent — new key issued, license identity preserved"
+      );
       startTransition(() => router.refresh());
     } finally {
       setBusy(null);

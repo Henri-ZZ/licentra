@@ -23,8 +23,16 @@ Licentra 是一个 **License key 服务端**（不是客户的桌面应用本体
 **后果**：
 
 - DB 泄漏不会泄漏可用的 key
-- 邮件发送失败 → 原始 key 丢失 → 需要重发时**生成新 Key + 吊销旧 Key**（"重发邮件"实际是"换发 Key"）
+- 邮件发送失败 → 原始 key 丢失 → 需要重发时**换发新 Key**（见 §5.4：在**同一行**上轮换 key hash，License 身份与设备激活保持不变，不新建 License）
 - License Key 本身即凭证，不需要额外的 API key 鉴权；安全靠 16 字符随机（≈95 bit 熵）+ HTTPS + 邮件投递渠道安全
+
+**身份 vs 凭据**（详见 [licentra-offline-migration-spec.md](licentra-offline-migration-spec.md)）：
+
+```text
+License Key     = 凭据（只存 hash，可轮换）
+License ID      = License.id，永久身份，永远不变
+Signed Certificate = Ed25519 签名的可移植证明（离线可验）
+```
 
 ### 2.2 离线验签 + 强制在线 check-in
 
@@ -37,7 +45,7 @@ Licentra 是一个 **License key 服务端**（不是客户的桌面应用本体
 
 所以客户端必须**每 24 小时调一次** `/api/license/check-in`（v1 固定 24h），让服务端把当前最新签名回传。如果服务端发现该 fingerprint 已被踢出 / license 已被吊销 / 已退款，就返回 `valid: false` + `reason`，客户端清缓存。
 
-### 2.3 每产品独立密钥对
+### 2.3 每产品独立密钥对 + Licentra 级签名键
 
 不同产品用不同的 ECDSA P-256 密钥对。客户应用按 `payload.product` 字段在本地公钥表里挑公钥验签：
 
@@ -49,6 +57,13 @@ PUBLIC_KEYS = {
 ```
 
 每产品的私钥用 `LICENSE_MASTER_KEY`（AES-256-GCM）加密后存在 `Product.privateKeyEncrypted`。**主密钥泄漏则所有产品私钥泄漏**——必须严格保管。
+
+**另外**，Licentra 维护一把**全局 Ed25519 签名键**（`SigningKey` 表，私钥同样用 `LICENSE_MASTER_KEY` 加密），用于签发：
+
+- **Signed License Certificate**：每次 activate/check-in 成功都随响应下发，客户端本地保存，离线可验，是迁移的"便携证明"；
+- **签名批量导出**：`POST /api/v1/migration/export` 导出的整包文档。
+
+这把键与每产品的 ECDSA 键完全独立；`kid` 标识（如 `licentra-2026-08`），轮换时旧公钥保留在 `GET /api/v1/well-known/licentra-keys` 供旧证书验证。
 
 ### 2.4 FIFO 踢出
 
@@ -68,23 +83,48 @@ License 不允许在 Dashboard 手创——只由 Paddle 付款事件触发。�
 
 v1 没有 User 表，`ADMIN_EMAIL` / `ADMIN_PASSWORD` 写死（常量时间比较），登录后下发 HS256 JWT cookie。`proxy.ts`（Next.js 16 重命名自 `middleware.ts`）保护 `/dashboard/*`。**后续接多用户只需把 `verifyCredentials` 换成 Prisma lookup**。
 
+### 2.7 离线迁移架构（v1 落地范围）
+
+完整协议见 [licentra-offline-migration-spec.md](licentra-offline-migration-spec.md)。核心：**迁移不依赖 Licentra API 保持在线**。
+
+```text
+正常运营期：
+  activate / check-in 成功
+        ↓
+  返回 ECDSA payload + Signed License Certificate（Ed25519）
+        ↓
+  客户端本地保存 Key + Certificate
+
+下线迁移期：
+  数据库层面：POST /api/v1/migration/export → 签名整包导出 → 目标系统用 Licentra 公钥离线验证 → 建目标 License（1000 个 license 全量导入，不需要用户在线）
+  客户端层面：已有证书的客户端 → 目标系统离线验证书 → 换发目标凭据（不再依赖 Licentra API）
+```
+
+v1 已实现：稳定 `license_id`（= `License.id`，轮换/迁移不变）、key 只存 hash、`SigningKey`（Ed25519 + `kid` + 轮换保留旧键）、公钥发现端点、证书签发（内置在 activate/check-in）、签名批量导出、迁移字段（`sourceSystem/sourceLicenseId/migrationId`）、审计事件。**暂缓**：迁移导入 UI / 批量导入 / 迁移 dashboard（导入是目标系统侧职责）。
+
 ---
 
 ## 3. 数据模型
 
 ```
-Product ─┬─< LicenseKey ─< Activation
-         └─< Order ─< LicenseKey
+Product ─┬─< License ─< Activation
+         └─< Order ─< License
 WebhookEvent (独立)
+SigningKey  (Licentra 级 Ed25519 签名键，独立)
+AuditEvent  (生命周期 / 迁移审计，独立)
 ```
 
 | 表             | 关键字段                                                                                                                                                                               |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Product`      | `slug` (unique), `paddleProductId` (unique), `privateKeyEncrypted`, `publicKey`, `publicKeyFingerprint` (unique), `maxActivations`, `emailSubject`/`emailBodyHtml`/`resendFromAddress` |
-| `LicenseKey`   | `keyHash` (unique, **SHA-256(原始 key)**), `productId`, `orderId`, `maxActivations`, `revoked`/`revokedAt`/`revokedReason`, `emailedAt`/`emailError`/`emailAttempts`                   |
-| `Activation`   | `licenseKeyId`, `fingerprint` (**SHA-256(原始设备指纹)**, 不是原始值), `label`, `ipAddress`, `userAgent`, `lastCheckedAt`, 唯一 `(licenseKeyId, fingerprint)`                          |
+| `License`      | `id` (**永久 License 身份**), `keyHash` (unique, **SHA-256(原始 key)，可轮换**), `productId`, `orderId`, `tierId`/`plan`/`expiresAt` (快照), `maxActivations`, `revoked`/`revokedAt`/`revokedReason`, `customerId`/`email`, `metadata`, `sourceSystem`/`sourceLicenseId`/`migrationId`, `emailedAt`/`emailError`/`emailAttempts` |
+| `Activation`   | `licenseId`, `fingerprint` (**SHA-256(原始设备指纹)**, 不是原始值), `label`, `ipAddress`, `userAgent`, `lastCheckedAt`, 唯一 `(licenseId, fingerprint)`                                |
 | `Order`        | `paddleTransactionId` (unique), `paddleEmail`, `productId`, `amount`(分), `currency`, `status`, `rawPayload`(Json)                                                                     |
 | `WebhookEvent` | `paddleEventId` (unique), `eventType`, `processed`, `payload`(Json), `error`                                                                                                           |
+| `SigningKey`   | `kid` (unique, 如 `licentra-2026-08`), `algorithm`(Ed25519), `privateKeyEncrypted`, `publicKey`, `active`, `retiredAt` — 轮换保留旧键 |
+| `AuditEvent`   | `eventType`(`license.key_rotated` / `license.status_changed` / `license.migration_exported` / `license.migration_certificate_issued`), `licenseId`, `sourceSystem`/`sourceLicenseId`/`destinationSystem`/`migrationId`, `actor`, `metadata` |
+
+> 物理表名仍为 `LicenseKey`（`@@map` 保留，`db push` 不会重建表丢数据）；代码模型名已改为 `License`，语义上区分"身份"与"凭据"。
 
 完整定义见 [prisma/schema.prisma](prisma/schema.prisma)。
 
@@ -159,19 +199,23 @@ WebhookEvent 写入 → handleTransactionUpdated
         │
         └─ 服务端:
             ├─ license 不存在 / 吊销 → { valid: false }
-            ├─ 同 fingerprint → refresh lastCheckedAt → 签名返回
-            ├─ 新 fp + 未满 → 注册 → 签名返回
-            └─ 新 fp + 已满 → FIFO 踢最早 + 注册 → 签名返回
+            ├─ 同 fingerprint → refresh lastCheckedAt → 签名 + 证书 返回
+            ├─ 新 fp + 未满 → 注册 → 签名 + 证书 返回
+            └─ 新 fp + 已满 → FIFO 踢最早 + 注册 → 签名 + 证书 返回
 ```
+
+成功响应除 `{ valid, payload, signature }` 外，还附带 **`certificate`**（Licentra Ed25519 签发的 Signed License Certificate）。客户端把证书存本地——即使未来 Licentra 下线，也能凭证书向新 License 系统离线迁移（见 [licentra-offline-migration-spec.md](licentra-offline-migration-spec.md)）。
 
 ### 4.4 各 API 行为一览
 
 | 端点                           | 入参                                               | 行为                                              | 副作用           |
 | ------------------------------ | -------------------------------------------------- | ------------------------------------------------- | ---------------- |
-| `POST /api/license/activate`   | `{ key, fingerprint, label? }`                     | 同 fp 刷新 / 新 fp 注册 / 满则 FIFO 踢出          | 写 Activation    |
-| `POST /api/license/check-in`   | `{ key, fingerprint }`                             | 验证 license + 验证 fp 仍绑定，刷新 lastCheckedAt | 写 lastCheckedAt |
+| `POST /api/license/activate`   | `{ key, fingerprint, label? }`                     | 同 fp 刷新 / 新 fp 注册 / 满则 FIFO 踢出；返回 ECDSA payload + **Signed Certificate** | 写 Activation    |
+| `POST /api/license/check-in`   | `{ key, fingerprint }`                             | 验证 license + 验证 fp 仍绑定，刷新 lastCheckedAt；返回 payload + **Signed Certificate** | 写 lastCheckedAt |
+| `GET /api/v1/well-known/licentra-keys` | —                                          | 公开返回 Licentra Ed25519 公钥集（含已轮换旧键）  | 无               |
+| `POST /api/v1/migration/export` | `{ productId?, licenseIds?, destinationSystem?, includeCustomerData?, migrationId? }` | admin 会话 + 限流；生成**签名批量导出**；写审计 | 写 AuditEvent    |
 
-License API **不做鉴权**（key 即凭证）。`/api/webhook/paddle` 用 HMAC 验签；`/api/products/*` 和 `/api/licenses/*`（管理用）走 dashboard session。
+License API **不做鉴权**（key 即凭证）。`/api/webhook/paddle` 用 HMAC 验签；`/api/products/*`、`/api/licenses/*` 和 `/api/v1/migration/export`（管理用）走 dashboard session。公钥发现端点公开只读。
 
 ---
 
@@ -233,11 +277,12 @@ function verifyLicense({ payload, signature }) {
 
 | 场景                    | 操作                                                                                                 |
 | ----------------------- | ---------------------------------------------------------------------------------------------------- |
-| 客户说自己没收到 key    | Dashboard → Licenses → 搜邮箱 → "Resend email"（**实际是换发新 key + 吊销旧的**，原 key 找不回来了） |
+| 客户说自己没收到 key    | Dashboard → Licenses → 搜邮箱 → "Resend email"（**换发新 key**：在同一行轮换 `keyHash`，License 身份/设备激活/迁移字段不变，旧 key 立即失效） |
 | 客户退款                | Paddle 自动 → webhook → license 自动 revoked；无需手动操作                                           |
 | 客户超过 maxActivations | 自动 FIFO 踢出最早一台；不需要 admin 介入。客户被踢出的设备下次启动会拿到 `valid: false`             |
 | 紧急吊销某个 key        | Dashboard → Licenses → Revoke（reason 可选）                                                         |
 | 改邮件模板              | Dashboard → Products → 编辑 → 立刻对**后续新订单**生效；存量订单仍用创建时的模板                     |
+| 迁移到新 License 系统   | `POST /api/v1/migration/export` 拉取签名导出包；客户端凭本地 Signed Certificate 离线换证（见 offline-migration-spec） |
 
 ### 5.5 烟雾测试
 
@@ -260,15 +305,17 @@ pnpm tsx scripts/smoke-sign.ts
 | 产品私钥         | AES-256-GCM 加密，`LICENSE_MASTER_KEY` 是 32-byte hex（64 chars）                                     |
 | 设备指纹         | 入库前 SHA-256；DB 泄漏不暴露原始设备标识                                                             |
 | 签名序列化       | `JSON.stringify(payload)` 键顺序必须固定：`product → plan → license_id → license_expires_at → valid_until`。改动 = 协议破坏 |
+| License 证书     | Ed25519，`kid` 标识签名键，规范序列化字段顺序冻结（`type → version → … → nonce`）；公钥经 `/api/v1/well-known/licentra-keys` 发现 |
+| 迁移导出         | 仅 admin 会话可调 + 限流（10/min/IP）+ 全量审计；导出的签名文档离线可验，**不含明文 key / 私钥** |
 | 主密钥泄漏       | ⇒ 所有产品私钥可解 ⇒ 所有 license 可伪造。**生产环境必须用 KMS 或 secret manager**                    |
 
 ### 不在 v1 范围
 
 - 多用户 / 角色权限
-- License API 限流（生产建议加 Upstash Redis）
+- License API 限流（生产建议加 Upstash Redis；迁移导出端点已用内存限流器兜底）
 - Webhook 重试 UI（dashboard 看 `WebhookEvent.error`）
 - 邮件模板实时预览
-- 激活事件审计日志
+- 迁移导入 UI / dashboard（导入是目标系统侧职责，Licentra 只负责导出）
 - 测试套件（构建通过；建议加 Vitest + Playwright）
 
 ---
@@ -281,7 +328,9 @@ licentra/
 │   ├── schema.prisma
 │   └── migrations/
 ├── scripts/
-│   └── smoke-sign.ts
+│   ├── smoke-sign.ts                  # 无 DB 冒烟：ECDSA + Ed25519 证书 + 导出
+│   ├── bootstrap-signing-key.ts       # 首次生成 / --rotate 轮换 Licentra 签名键
+│   └── migrate-product-tiers.ts
 ├── src/
 │   ├── app/
 │   │   ├── (auth)/login/                # 登录页
@@ -293,8 +342,10 @@ licentra/
 │   │   │   └── orders/                  # Paddle 订单流水
 │   │   ├── api/
 │   │   │   ├── auth/{login,logout}/     # 鉴权
-│   │   │   ├── license/{activate,check-in}/
+│   │   │   ├── license/{activate,check-in}/   # 客户端验证（返回 ECDSA payload + 证书）
 │   │   │   ├── webhook/paddle/          # Paddle 入口
+│   │   │   ├── v1/well-known/licentra-keys/   # Ed25519 公钥发现（公开）
+│   │   │   ├── v1/migration/export/           # 签名批量导出（admin + 限流 + 审计）
 │   │   │   ├── products/                # 管理 CRUD + generate-key
 │   │   │   └── licenses/[id]/{revoke,resend-email}/
 │   │   ├── layout.tsx
@@ -304,12 +355,16 @@ licentra/
 │   │   └── dashboard/{sidebar,header}
 │   ├── lib/
 │   │   ├── auth.ts                      # JWT cookie + 常量时间凭据校验
+│   │   ├── certificate.ts               # Ed25519 Signed License Certificate：签发/离线验证 + 签名键管理
+│   │   ├── migration-export.ts          # 签名批量导出文档（§21）
+│   │   ├── audit.ts                     # AuditEvent 写入（key_rotated / status_changed / migration_*）
+│   │   ├── rate-limit.ts                # 内存限流（迁移端点）
 │   │   ├── crypto.ts                    # AES-256-GCM
 │   │   ├── email.ts                     # Resend + 占位符渲染 + stub 模式
 │   │   ├── env.ts                       # zod 校验
 │   │   ├── fingerprint.ts               # SHA-256 + 公私钥指纹
 │   │   ├── license-key.ts               # 16 字符生成 + 格式校验
-│   │   ├── license-query.ts             # loadLicenseByHash / buildLicensePayload / buildLicenseResponse
+│   │   ├── license-query.ts             # loadLicenseByHash / buildLicensePayload / buildLicenseResponse（含证书）
 │   │   ├── license-sign.ts              # ECDSA P-256 + DER + base64
 │   │   ├── paddle.ts                    # 验签 + 事件类型
 │   │   ├── prisma.ts                    # Neon adapter 单例
@@ -341,18 +396,39 @@ licentra/
     "license_expires_at": null,
     "valid_until": "2026-08-14T16:00:00.000Z"
   },
-  "signature": "MEUCIQ..."
+  "signature": "MEUCIQ...",
+  "certificate": {
+    "type": "licentra_license_certificate",
+    "version": 1,
+    "issuer": "licentra",
+    "kid": "licentra-2026-08",
+    "license_id": "abc123",
+    "product_id": "stealth-browser-assistant",
+    "plan": "pro",
+    "status": "active",
+    "max_devices": 3,
+    "issued_at": 1786700000,
+    "expires_at": null,
+    "nonce": "...",
+    "signature": "<base64 Ed25519>"
+  }
 }
 失败响应: { "valid": false, "reason": "license_not_found" | "license_revoked" | "license_refunded" }
 ```
+
+> `certificate` 即 **Signed License Certificate**：Licentra 用全局 Ed25519 键签发的 License 状态快照。客户端应本地保存；吊销/退款等实时状态仍需 online check-in 反映。验证用公钥见 `GET /api/v1/well-known/licentra-keys`（按 `kid` 取键）。
 
 ### `POST /api/license/check-in`
 
 ```json
 请求: { "key": "...", "fingerprint": "..." }
-成功响应: 同 activate
+成功响应: 同 activate（含新签发的 certificate）
 失败响应: 同 activate，另加 "activation_evicted"（指纹被踢出）
 ```
+
+### `POST /api/v1/migration/export`
+
+admin 会话 + 限流。返回整包签名导出（`type: licentra_license_migration_export`），含全部 License 的 `license_id/product_id/plan/status/max_devices/expires_at/created_at`，可用 `productId` / `licenseIds` 过滤，`includeCustomerData: true` 时附加 `email`/`customer_id`。离线迁移协议见 [licentra-offline-migration-spec.md](licentra-offline-migration-spec.md)。
 
 ### `POST /api/webhook/paddle`
 
@@ -369,5 +445,6 @@ licentra/
 - [ ] `PADDLE_WEBHOOK_SECRET` 是 Paddle 后台给的真实 secret
 - [ ] Neon DB 加 IP 白名单（Vercel egress）
 - [ ] 上线前用 `pnpm build` 通过；用 `pnpm tsx scripts/smoke-sign.ts` 验证签名管线
+- [ ] 首次部署跑 `pnpm bootstrap:signing-key` 生成 Licentra Ed25519 签名键（此后每次 activate/check-in 自动签发证书；轮换用 `--rotate`）
 - [ ] Dashboard 默认密码已改
 - [ ] 第一个 Product 已创建 + 签名密钥已生成 + 公钥已交给产品方嵌入代码

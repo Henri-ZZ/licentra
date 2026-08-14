@@ -10,8 +10,8 @@ export default async function DashboardOverviewPage() {
   const [productCount, licenseCount, activeLicenseCount, recentOrders] =
     await Promise.all([
       prisma.product.count(),
-      prisma.licenseKey.count(),
-      prisma.licenseKey.count({ where: { revoked: false } }),
+      prisma.license.count(),
+      prisma.license.count({ where: { revoked: false } }),
       prisma.order.findMany({
         orderBy: { createdAt: "desc" },
         take: 5,
