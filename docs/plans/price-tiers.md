@@ -25,7 +25,7 @@
 
 ```prisma
 model ProductPriceTier {
-  id            String   @id @default(cuid())
+  id            String   @id @default(nanoid(10))
   productId     String
   product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   plan          String                          // 1–40 chars

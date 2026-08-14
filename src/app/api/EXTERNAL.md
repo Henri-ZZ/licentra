@@ -290,7 +290,7 @@ duplicate delivery hits the unique constraint and is treated as handled.
     "status": "completed",
     "customer_id": "ctm_01h…",
     "custom_data": {
-      "productId": "<Licentra Product.cuid>",
+      "productId": "<Licentra Product.id>",
       "paddleProductId": "pro_xxx"
     },
     "items": [{ "price_id": "pri_xxx", "quantity": 1 }],
@@ -318,7 +318,7 @@ duplicate delivery hits the unique constraint and is treated as handled.
 | 500    | `{ "error": "<message>" }`                 | Handler threw — Paddle will retry                     |
 
 **Product resolution**: the handler reads `custom_data.productId`
-(preferred — the Licentra Product.cuid you set in Paddle's checkout
+(preferred — the Licentra Product.id you set in Paddle's checkout
 config) and falls back to Paddle's literal `product_id` matching
 `Product.paddleProductId`.
 
@@ -358,7 +358,7 @@ Other status transitions are silently ignored.
     "id": "txn_01h…",
     "status": "refunded",
     "customer_id": "ctm_01h…",
-    "custom_data": { "productId": "<Licentra Product.cuid>" }
+    "custom_data": { "productId": "<Licentra Product.id>" }
   }
 }
 ```

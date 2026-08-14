@@ -110,7 +110,7 @@ Update product fields. All fields optional; only provided fields change.
 Plan / price-tier fields live on `ProductPriceTier` and are managed via
 `/api/products/[id]/tiers` — see below.
 
-**Path params**: `id` (Product cuid)
+**Path params**: `id` (Product id)
 
 **Request body** (any subset)
 ```json
@@ -153,7 +153,7 @@ the private key encrypted under `LICENSE_MASTER_KEY`; returns the public
 key (PEM) and its fingerprint for client distribution. Any previously
 signed licenses are invalidated.
 
-**Path params**: `id` (Product cuid)
+**Path params**: `id` (Product id)
 
 **Request body**: none.
 
@@ -174,7 +174,7 @@ signed licenses are invalidated.
 Add a non-default language template. The `en` default is created with the
 product and can only be edited (see PATCH below) — POSTing `en` returns 409.
 
-**Path params**: `id` (Product cuid)
+**Path params**: `id` (Product id)
 
 **Request body**
 ```json
@@ -211,7 +211,7 @@ Edit a template. The `locale` field is **not** editable — to "rename" a
 locale, DELETE and POST a new one. The `en` row's `isDefault` cannot be
 flipped (no API path allows it).
 
-**Path params**: `id` (Product cuid), `tid` (Template cuid)
+**Path params**: `id` (Product id), `tid` (Template id)
 
 **Request body** (any subset)
 ```json
@@ -236,7 +236,7 @@ flipped (no API path allows it).
 Delete a template. The default `en` row cannot be deleted (edit it
 instead).
 
-**Path params**: `id` (Product cuid), `tid` (Template cuid)
+**Path params**: `id` (Product id), `tid` (Template id)
 
 **Responses**
 | Status | Body                                            |
@@ -262,7 +262,7 @@ already used by another tier on the same product. `expiresInDays` is
 **not** part of this request — every new tier is created at `null`
 (lifetime) until timed plans are enabled.
 
-**Path params**: `id` (Product cuid)
+**Path params**: `id` (Product id)
 
 **Request body**
 ```json
@@ -293,7 +293,7 @@ Edit a tier. `expiresInDays` is intentionally absent — it is locked at
 `null` (lifetime) until timed plans are enabled. To change expiry,
 create a new tier and migrate licenses over.
 
-**Path params**: `id` (Product cuid), `tid` (PriceTier cuid)
+**Path params**: `id` (Product id), `tid` (PriceTier id)
 
 **Request body** (any subset)
 ```json
@@ -318,7 +318,7 @@ create a new tier and migrate licenses over.
 Delete a tier. Refuses with 409 if any `License` row still references
 it — revoke those licenses or reassign them to another tier first.
 
-**Path params**: `id` (Product cuid), `tid` (PriceTier cuid)
+**Path params**: `id` (Product id), `tid` (PriceTier id)
 
 **Responses**
 | Status | Body                                  | Notes                                |
@@ -347,7 +347,7 @@ heuristic as the Paddle webhook).
 **Request body**
 ```json
 {
-  "productId": "<Product cuid>",
+  "productId": "<Product id>",
   "email": "customer@example.com"
 }
 ```
@@ -355,7 +355,7 @@ heuristic as the Paddle webhook).
 **Responses**
 | Status | Body                                                                  |
 |--------|-----------------------------------------------------------------------|
-| 200    | `{ "ok": true, "licenseId": "<License cuid>", "rawKey": "ABCD-…" }`   |
+| 200    | `{ "ok": true, "licenseId": "<License id>", "rawKey": "ABCD-…" }`   |
 | 400    | `{ "error": "invalid_json" \| "invalid_payload", … }`                |
 | 400    | `{ "error": "product_has_no_signing_key" }`                          |
 | 401    | `{ "error": "unauthorized" }`                                        |
@@ -370,7 +370,7 @@ fields — only `keyHash` is replaced with a fresh credential, which is
 then emailed. The old key stops matching the stored hash immediately.
 The rotation is recorded in the audit trail (`license.key_rotated`).
 
-**Path params**: `id` (License cuid)
+**Path params**: `id` (License id)
 
 **Template selection**: `Order.locale` (captured at Paddle checkout) →
 matched against `ProductEmailTemplate.locale` by `-`-prefix; falls back
@@ -396,7 +396,7 @@ the key will fail `validate` / `activate` / `check-in` calls afterwards.
 The transition is recorded in the audit trail
 (`license.status_changed`).
 
-**Path params**: `id` (License cuid)
+**Path params**: `id` (License id)
 
 **Request body** (optional)
 ```json
@@ -432,8 +432,8 @@ plaintext License Keys or private signing keys.
 **Request body** (all optional)
 ```json
 {
-  "productId": "<Product cuid — omit to export all products>",
-  "licenseIds": ["<License cuid>", "…"],
+  "productId": "<Product id — omit to export all products>",
+  "licenseIds": ["<License id>", "…"],
   "destinationSystem": "new-license-system",
   "includeCustomerData": false,
   "migrationId": "migration_2026_08_14"

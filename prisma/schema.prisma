@@ -7,7 +7,7 @@ datasource db {
 }
 
 model Product {
-  id                   String       @id @default(cuid())
+  id                   String       @id @default(nanoid(10))
   name                 String
   slug                 String       @unique
   description          String?
@@ -37,7 +37,7 @@ model Product {
 }
 
 model ProductPriceTier {
-  id            String   @id @default(cuid())
+  id            String   @id @default(nanoid(10))
   productId     String
   product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   // Free-text plan name shown in dashboards and signed into LicensePayload.
@@ -62,7 +62,7 @@ model ProductPriceTier {
 }
 
 model ProductEmailTemplate {
-  id          String   @id @default(cuid())
+  id          String   @id @default(nanoid(10))
   productId   String
   product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   // Simplified language code: "en" "zh" "ja" "de" — no region suffix.
@@ -100,7 +100,7 @@ model License {
   // row (see POST /api/licenses/[id]/resend-email), keeping id, device
   // activations and migration fields untouched.
   // ------------------------------------------------------------------
-  id             String       @id @default(cuid())
+  id             String       @id @default(nanoid(10))
   keyHash        String       @unique
   productId      String
   product        Product      @relation(fields: [productId], references: [id])
@@ -141,7 +141,7 @@ model License {
 }
 
 model Activation {
-  id            String     @id @default(cuid())
+  id            String     @id @default(nanoid(10))
   licenseId     String     @map("licenseKeyId")
   license       License    @relation(fields: [licenseId], references: [id], onDelete: Cascade)
   fingerprint   String
@@ -164,7 +164,7 @@ model Activation {
 /// key; rotated keys are retired (not deleted) so previously issued
 /// certificates stay verifiable.
 model SigningKey {
-  id                  String    @id @default(cuid())
+  id                  String    @id @default(nanoid(10))
   // e.g. "licentra-2026-08". Unique; rotated keys keep their kid.
   kid                 String    @unique
   algorithm           String    @default("Ed25519")
@@ -180,7 +180,7 @@ model SigningKey {
 /// Immutable audit trail for license lifecycle / migration operations
 /// (spec §26). Never log plaintext License Keys or private keys here.
 model AuditEvent {
-  id                String   @id @default(cuid())
+  id                String   @id @default(nanoid(10))
   // e.g. license.key_rotated | license.status_changed |
   //      license.migration_exported
   eventType         String
@@ -199,7 +199,7 @@ model AuditEvent {
 }
 
 model Order {
-  id                  String   @id @default(cuid())
+  id                  String   @id @default(nanoid(10))
   paddleTransactionId String   @unique
   paddleEmail         String?
   // BCP-47 locale captured from Paddle (e.g. "zh-CN"). Used at email-send
