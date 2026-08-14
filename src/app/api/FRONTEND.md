@@ -332,6 +332,35 @@ it — revoke those licenses or reassign them to another tier first.
 
 ## Licenses
 
+### `POST /api/licenses`
+
+Manually create a License (admin-only, bypasses Paddle). Intended for
+offline / gift / support cases with no Paddle transaction. The raw
+License Key is returned **once** in the response so the UI can show it —
+it is never persisted, so the caller must capture it immediately.
+
+The License stores the customer `email` but has **no Order**: Paddle
+refund webhooks will not touch it — revoke manually if needed. Plan /
+expiry are snapshotted from the product's first price tier (same
+heuristic as the Paddle webhook).
+
+**Request body**
+```json
+{
+  "productId": "<Product cuid>",
+  "email": "customer@example.com"
+}
+```
+
+**Responses**
+| Status | Body                                                                  |
+|--------|-----------------------------------------------------------------------|
+| 200    | `{ "ok": true, "licenseId": "<License cuid>", "rawKey": "ABCD-…" }`   |
+| 400    | `{ "error": "invalid_json" \| "invalid_payload", … }`                |
+| 400    | `{ "error": "product_has_no_signing_key" }`                          |
+| 401    | `{ "error": "unauthorized" }`                                        |
+| 404    | `{ "error": "product_not_found" }`                                   |
+
 ### `POST /api/licenses/[id]/resend-email`
 
 Re-send the license email to the customer. Because the raw key is never

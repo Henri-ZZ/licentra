@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { CreateLicenseDialog } from "@/app/(dashboard)/dashboard/licenses/create-license-dialog";
 import { LicenseRowActions } from "@/app/(dashboard)/dashboard/licenses/license-row-actions";
 import { LicensesSearchForm } from "@/app/(dashboard)/dashboard/licenses/licenses-search-form";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +21,11 @@ interface PageProps {
 
 export default async function LicensesPage({ searchParams }: PageProps) {
   const { q, productId } = await searchParams;
+
+  const products = await prisma.product.findMany({
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
 
   const licenses = await prisma.license.findMany({
     where: {
@@ -50,23 +56,34 @@ export default async function LicensesPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Licenses</h1>
-        <p className="text-sm text-muted-foreground">
-          Raw license keys are never stored — only SHA-256 hashes. Use the
-          order email or transaction ID to find a customer.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Licenses</h1>
+          <p className="text-sm text-muted-foreground">
+            Raw license keys are never stored — only SHA-256 hashes. Use the
+            order email or transaction ID to find a customer.
+          </p>
+        </div>
+        <CreateLicenseDialog
+          products={products}
+          defaultProductId={productId ?? null}
+        />
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Search</CardTitle>
           <CardDescription>
-            Filter by customer email, paddle transaction ID, or license ID.
+            Filter by product, customer email, paddle transaction ID, or
+            license ID.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <LicensesSearchForm defaultValue={q} />
+          <LicensesSearchForm
+            products={products}
+            defaultProductId={productId}
+            defaultValue={q}
+          />
         </CardContent>
       </Card>
 

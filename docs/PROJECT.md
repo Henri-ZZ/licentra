@@ -75,9 +75,11 @@ PUBLIC_KEYS = {
 
 整个流程在 `prisma.$transaction` 里跑，保证踢出和注册的原子性。
 
-### 2.5 Paddle webhook 是事实来源
+### 2.5 Paddle webhook 是主渠道，Dashboard 可手动创建
 
-License 不允许在 Dashboard 手创——只由 Paddle 付款事件触发。这样不会出现"签发了 Key 但没收到钱"的不一致。webhook 幂等：`WebhookEvent.paddleEventId` 唯一索引，重复 event 直接 200 返回。
+正常售卖：License 由 Paddle 付款事件触发签发，避免"签发了 Key 但没收到钱"的不一致。webhook 幂等：`WebhookEvent.paddleEventId` 唯一索引，重复 event 直接 200 返回。
+
+**手动创建**（`POST /api/licenses`，admin）：线下 / 赠送 / 客服补偿等无 Paddle 交易的场景。只填邮箱即可（产品从下拉选），成功弹窗一次性展示激活码——明文 key 依旧不入库。手创 License **没有 Order 关联**：Paddle 退款 webhook 不会自动吊销它，需要时在 dashboard 手动 Revoke。该端点仅 admin 会话可调。
 
 ### 2.6 单用户鉴权
 
@@ -214,8 +216,9 @@ WebhookEvent 写入 → handleTransactionUpdated
 | `POST /api/license/check-in`   | `{ key, fingerprint }`                             | 验证 license + 验证 fp 仍绑定，刷新 lastCheckedAt；返回 payload + **Signed Certificate** | 写 lastCheckedAt |
 | `GET /api/v1/well-known/licentra-keys` | —                                          | 公开返回 Licentra Ed25519 公钥集（含已轮换旧键）  | 无               |
 | `POST /api/v1/migration/export` | `{ productId?, licenseIds?, destinationSystem?, includeCustomerData?, migrationId? }` | admin 会话 + 限流；生成**签名批量导出**；写审计 | 写 AuditEvent    |
+| `POST /api/licenses`   | `{ productId, email }`                                | admin 手动创建 License（无 Paddle 订单）；返回一次性激活码 | 写 License       |
 
-License API **不做鉴权**（key 即凭证）。`/api/webhook/paddle` 用 HMAC 验签；`/api/products/*`、`/api/licenses/*` 和 `/api/v1/migration/export`（管理用）走 dashboard session。公钥发现端点公开只读。
+License API **不做鉴权**（key 即凭证）。`/api/webhook/paddle` 用 HMAC 验签；`/api/products/*`、`/api/licenses*` 和 `/api/v1/migration/export`（管理用）走 dashboard session。公钥发现端点公开只读。
 
 ---
 
@@ -278,6 +281,7 @@ function verifyLicense({ payload, signature }) {
 | 场景                    | 操作                                                                                                 |
 | ----------------------- | ---------------------------------------------------------------------------------------------------- |
 | 客户说自己没收到 key    | Dashboard → Licenses → 搜邮箱 → "Resend email"（**换发新 key**：在同一行轮换 `keyHash`，License 身份/设备激活/迁移字段不变，旧 key 立即失效） |
+| 线下 / 赠送 / 补偿发 key | Dashboard → Licenses → "New license" → 选产品 + 填邮箱 → 弹窗复制激活码（明文只展示一次，不入库） |
 | 客户退款                | Paddle 自动 → webhook → license 自动 revoked；无需手动操作                                           |
 | 客户超过 maxActivations | 自动 FIFO 踢出最早一台；不需要 admin 介入。客户被踢出的设备下次启动会拿到 `valid: false`             |
 | 紧急吊销某个 key        | Dashboard → Licenses → Revoke（reason 可选）                                                         |
@@ -338,7 +342,7 @@ licentra/
 │   │   │   ├── layout.tsx
 │   │   │   ├── page.tsx                 # 总览
 │   │   │   ├── products/                # 产品 CRUD
-│   │   │   ├── licenses/                # License 列表 / 详情 / 吊销 / 重发
+│   │   │   ├── licenses/                # License 列表（按产品筛选）/ 手动创建 / 详情 / 吊销 / 重发
 │   │   │   └── orders/                  # Paddle 订单流水
 │   │   ├── api/
 │   │   │   ├── auth/{login,logout}/     # 鉴权
@@ -347,6 +351,7 @@ licentra/
 │   │   │   ├── v1/well-known/licentra-keys/   # Ed25519 公钥发现（公开）
 │   │   │   ├── v1/migration/export/           # 签名批量导出（admin + 限流 + 审计）
 │   │   │   ├── products/                # 管理 CRUD + generate-key
+│   │   │   ├── licenses/                # 管理：POST 手动创建
 │   │   │   └── licenses/[id]/{revoke,resend-email}/
 │   │   ├── layout.tsx
 │   │   └── page.tsx                     # / → 重定向到 /dashboard 或 /login
