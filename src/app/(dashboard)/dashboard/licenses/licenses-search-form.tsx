@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export function LicensesSearchForm({
   defaultProductId,
   defaultValue,
 }: Props) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [q, setQ] = useState(defaultValue ?? "");
   const [product, setProduct] = useState(defaultProductId ?? ALL_PRODUCTS);
@@ -36,10 +38,10 @@ export function LicensesSearchForm({
     }
     if (nextQ) params.set("q", nextQ);
     const qs = params.toString();
+    // Client-side navigation: no full page reload. The server component
+    // re-renders from the new searchParams and Next swaps in the RSC payload.
     startTransition(() => {
-      window.location.href = qs
-        ? `/dashboard/licenses?${qs}`
-        : "/dashboard/licenses";
+      router.push(qs ? `/dashboard/licenses?${qs}` : "/dashboard/licenses");
     });
   }
 

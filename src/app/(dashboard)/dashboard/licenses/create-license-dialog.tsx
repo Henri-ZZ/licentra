@@ -131,12 +131,12 @@ export function CreateLicenseDialog({ products, defaultProductId }: Props) {
       >
         <DialogContent className="max-w-lg">
           {result ? (
-            // --- Result view: show the activation code once ---
+            // --- Result view: show the License Key once ---
             <>
               <DialogHeader>
                 <DialogTitle>License created</DialogTitle>
                 <DialogDescription>
-                  The activation code below is shown{" "}
+                  The License Key below is shown{" "}
                   <span className="font-semibold">only once</span> — copy it
                   now. Licentra never stores the plaintext key.
                 </DialogDescription>
@@ -144,7 +144,7 @@ export function CreateLicenseDialog({ products, defaultProductId }: Props) {
 
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Activation code</Label>
+                  <Label>License Key</Label>
                   <div className="flex gap-2">
                     <Input
                       readOnly
