@@ -90,7 +90,9 @@ export function ProductEditForm({ product }: { product: Product }) {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="signatureTtlSeconds">Signature validity (seconds)</Label>
+          <Label htmlFor="signatureTtlSeconds">
+            Signature validity (seconds)
+          </Label>
           <Input
             id="signatureTtlSeconds"
             name="signatureTtlSeconds"
@@ -122,12 +124,12 @@ export function ProductEditForm({ product }: { product: Product }) {
           name="supportEmail"
           type="email"
           defaultValue={product.supportEmail ?? ""}
-          placeholder="support@henri.ren"
+          placeholder="support@mail.henri.ren"
         />
         <p className="text-xs text-muted-foreground">
-          Substituted into <code className="font-mono">{`{{supportEmail}}`}</code>{" "}
-          at send time. Falls back to <code>SUPPORT_EMAIL</code> from env when
-          empty.
+          Substituted into{" "}
+          <code className="font-mono">{`{{supportEmail}}`}</code> at send time.
+          Falls back to <code>SUPPORT_EMAIL</code> from env when empty.
         </p>
       </div>
 

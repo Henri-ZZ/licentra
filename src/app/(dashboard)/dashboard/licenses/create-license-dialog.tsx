@@ -125,7 +125,10 @@ export function CreateLicenseDialog({ products, defaultProductId }: Props) {
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (next) resetForm();
+          // Always reset: every open starts from a fresh form, and every
+          // close (Done / X / outside click) leaves the dialog in its
+          // initial state — the result view never persists between sessions.
+          resetForm();
           setOpen(next);
         }}
       >

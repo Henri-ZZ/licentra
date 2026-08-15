@@ -137,10 +137,9 @@ export function ProductForm() {
       <div className="space-y-2 border-t pt-4">
         <Label className="text-base">First price tier</Label>
         <p className="text-xs text-muted-foreground">
-          One tier is required at creation. Add more (e.g. 30天 / 一年 /
-          永久) from the product edit page once support for timed plans is
-          enabled. expiresInDays is locked at <code>null</code> (lifetime)
-          for now.
+          One tier is required at creation. Add more (e.g. 30天 / 一年 / 永久)
+          from the product edit page once support for timed plans is enabled.
+          expiresInDays is locked at <code>null</code> (lifetime) for now.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
@@ -169,7 +168,7 @@ export function ProductForm() {
           id="supportEmail"
           name="supportEmail"
           type="email"
-          placeholder="support@henri.ren"
+          placeholder="support@mail.henri.ren"
         />
         <p className="text-xs text-muted-foreground">
           Substituted into{" "}
