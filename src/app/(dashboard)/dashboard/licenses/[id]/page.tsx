@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatDateTimeCn } from "@/lib/datetime";
 import { prisma } from "@/lib/prisma";
 
 interface PageProps {
@@ -30,7 +31,7 @@ export default async function LicenseDetailPage({ params }: PageProps) {
   if (!license) notFound();
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-[72rem]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">License</h1>
@@ -69,17 +70,17 @@ export default async function LicenseDetailPage({ params }: PageProps) {
           } />
           <Row label="Plan" value={license.plan ?? "—"} />
           <Row label="Max activations" value={license.maxActivations.toString()} />
-          <Row label="Expires" value={license.expiresAt?.toISOString() ?? "lifetime"} />
+          <Row label="Expires" value={license.expiresAt ? formatDateTimeCn(license.expiresAt) : "lifetime"} />
           <Row label="Customer email" value={license.order?.paddleEmail ?? license.email ?? "—"} />
           <Row label="Customer ID" value={license.customerId ?? "—"} />
           <Row label="Paddle transaction" value={
             <span className="font-mono text-xs">{license.order?.paddleTransactionId ?? "—"}</span>
           } />
-          <Row label="Created" value={license.createdAt.toISOString()} />
+          <Row label="Created" value={formatDateTimeCn(license.createdAt)} />
           {license.revokedAt && (
-            <Row label="Revoked at" value={license.revokedAt.toISOString()} />
+            <Row label="Revoked at" value={formatDateTimeCn(license.revokedAt)} />
           )}
-          <Row label="Emailed at" value={license.emailedAt?.toISOString() ?? "—"} />
+          <Row label="Emailed at" value={formatDateTimeCn(license.emailedAt)} />
           {license.emailError && (
             <Row label="Last email error" value={license.emailError} />
           )}
@@ -125,10 +126,10 @@ export default async function LicenseDetailPage({ params }: PageProps) {
                       {a.ipAddress ?? "—"}
                     </TableCell>
                     <TableCell className="text-xs">
-                      {a.createdAt.toISOString().slice(0, 19).replace("T", " ")}
+                      {formatDateTimeCn(a.createdAt)}
                     </TableCell>
                     <TableCell className="text-xs">
-                      {a.lastCheckedAt.toISOString().slice(0, 19).replace("T", " ")}
+                      {formatDateTimeCn(a.lastCheckedAt)}
                     </TableCell>
                   </TableRow>
                 ))}

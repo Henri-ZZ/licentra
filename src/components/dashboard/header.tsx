@@ -11,6 +11,12 @@ export function DashboardHeader({ email }: { email: string }) {
       </div>
       <div className="flex items-center gap-3 text-sm">
         <span className="text-muted-foreground">{email}</span>
+        {/* Hard-coded for now — all dashboard timestamps are shown in UTC+8
+            (see src/lib/datetime.ts). Replace with a real preference when
+            timezone selection is added. */}
+        <span className="rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground">
+          UTC+8
+        </span>
         <SignOutButton />
       </div>
     </header>

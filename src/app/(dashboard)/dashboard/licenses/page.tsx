@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatDateTimeCn } from "@/lib/datetime";
 import { prisma } from "@/lib/prisma";
 
 interface PageProps {
@@ -143,10 +144,10 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                         {l.activations.length} / {l.maxActivations}
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap">
-                        {fmtTime(lastActivatedAt)}
+                        {formatDateTimeCn(lastActivatedAt)}
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap">
-                        {fmtTime(lastCheckedInAt)}
+                        {formatDateTimeCn(lastCheckedInAt)}
                       </TableCell>
                       <TableCell>
                         {l.emailedAt ? (
@@ -186,9 +187,4 @@ export default async function LicensesPage({ searchParams }: PageProps) {
       </Card>
     </div>
   );
-}
-
-/** Compact UTC timestamp: "2026-08-14 21:00" or "—" when null. */
-function fmtTime(d: Date | null | undefined): string {
-  return d ? d.toISOString().slice(0, 16).replace("T", " ") : "—";
 }

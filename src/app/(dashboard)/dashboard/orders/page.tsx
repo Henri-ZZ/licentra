@@ -8,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatDateTimeCn } from "@/lib/datetime";
 import { prisma } from "@/lib/prisma";
 
 export default async function OrdersPage() {
@@ -56,7 +57,7 @@ export default async function OrdersPage() {
                 {orders.map((o) => (
                   <TableRow key={o.id}>
                     <TableCell className="text-xs text-muted-foreground">
-                      {o.createdAt.toISOString().slice(0, 19).replace("T", " ")}
+                      {formatDateTimeCn(o.createdAt)}
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       {o.paddleTransactionId}
