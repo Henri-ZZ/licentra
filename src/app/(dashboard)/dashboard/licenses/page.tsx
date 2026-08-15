@@ -1,10 +1,15 @@
 import Link from "next/link";
 
 import { CreateLicenseDialog } from "@/app/(dashboard)/dashboard/licenses/create-license-dialog";
-import { LicenseRowActions } from "@/app/(dashboard)/dashboard/licenses/license-row-actions";
 import { LicensesSearchForm } from "@/app/(dashboard)/dashboard/licenses/licenses-search-form";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -37,7 +42,9 @@ export default async function LicensesPage({ searchParams }: PageProps) {
         q
           ? {
               OR: [
-                { order: { paddleEmail: { contains: q, mode: "insensitive" } } },
+                {
+                  order: { paddleEmail: { contains: q, mode: "insensitive" } },
+                },
                 { email: { contains: q, mode: "insensitive" } },
                 { order: { paddleTransactionId: { contains: q } } },
                 { id: { contains: q } },
@@ -75,8 +82,8 @@ export default async function LicensesPage({ searchParams }: PageProps) {
         <CardHeader>
           <CardTitle>Search</CardTitle>
           <CardDescription>
-            Filter by product, customer email, paddle transaction ID, or
-            license ID.
+            Filter by product, customer email, paddle transaction ID, or license
+            ID.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -109,22 +116,22 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                   <TableHead>Last check-in</TableHead>
                   <TableHead>Emailed</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {licenses.map((l) => {
                   // activations are ordered by createdAt asc → the last one
                   // is the most recently registered device.
-                  const lastActivatedAt = l.activations.length
-                    ? l.activations[l.activations.length - 1].createdAt
+                  const lastActivation = l.activations.length
+                    ? l.activations[l.activations.length - 1]
                     : null;
+                  const lastActivatedAt = lastActivation?.createdAt ?? null;
                   const lastCheckedInAt = l.activations.reduce<Date | null>(
                     (max, a) =>
                       max === null || a.lastCheckedAt > max
                         ? a.lastCheckedAt
                         : max,
-                    null
+                    null,
                   );
                   return (
                     <TableRow key={l.id}>
@@ -143,8 +150,15 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                       <TableCell>
                         {l.activations.length} / {l.maxActivations}
                       </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">
-                        {formatDateTimeCn(lastActivatedAt)}
+                      <TableCell className="text-xs whitespace-nowrap min-w-[230px]">
+                        <div className="flex items-center gap-1.5">
+                          <span>{formatDateTimeCn(lastActivatedAt)}</span>
+                          {lastActivation?.browser && (
+                            <span className="rounded border px-1 text-[10px] leading-4 text-muted-foreground">
+                              {lastActivation.browser}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap">
                         {formatDateTimeCn(lastCheckedInAt)}
@@ -170,12 +184,6 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                         ) : (
                           <Badge variant="success">active</Badge>
                         )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <LicenseRowActions
-                          licenseId={l.id}
-                          revoked={l.revoked}
-                        />
                       </TableCell>
                     </TableRow>
                   );
