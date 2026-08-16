@@ -10,7 +10,8 @@
     "db:push": "prisma db push",
     "backfill:templates": "tsx scripts/backfill-email-templates.ts",
     "backfill:tiers": "tsx scripts/migrate-product-tiers.ts",
-    "bootstrap:signing-key": "tsx scripts/bootstrap-signing-key.ts"
+    "bootstrap:signing-key": "tsx scripts/bootstrap-signing-key.ts",
+    "bootstrap:2fa": "tsx scripts/bootstrap-2fa.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -28,6 +29,7 @@
     "lucide-react": "^1.31.0",
     "next": "16.3.0",
     "prisma": "^7.9.1",
+    "qrcode": "^1.5.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "resend": "^6.19.0",
@@ -39,6 +41,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "swagger-ui-dist": "^5.32.13",

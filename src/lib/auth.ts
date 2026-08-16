@@ -84,3 +84,86 @@ export async function getSessionEmail(): Promise<string | null> {
 }
 
 export const SESSION_COOKIE_NAME = COOKIE_NAME;
+
+// ---------------------------------------------------------------------------
+// Two-factor (TOTP) pending state
+//
+// After the password step we don't issue the full session yet. Instead we
+// set a short-lived "pending" cookie carrying { email, purpose }:
+//   purpose "totp"       → a TOTP secret is configured; the client must
+//                          submit a 6-digit code to complete login.
+//   purpose "totp-setup" → no secret configured yet; the client must go
+//                          through /setup-2fa to configure one. The freshly
+//                          generated secret travels inside this signed JWT
+//                          so the setup page never has to trust client input.
+// ---------------------------------------------------------------------------
+
+const PENDING_COOKIE_NAME = "licentra_pending_2fa";
+const PENDING_MAX_AGE_SECONDS = 5 * 60; // 5 minutes
+
+export type Pending2faPurpose = "totp" | "totp-setup";
+
+export interface Pending2faState {
+  email: string;
+  purpose: Pending2faPurpose;
+  /** Present only when purpose === "totp-setup". */
+  secret?: string;
+}
+
+export async function createPending2faCookie(
+  email: string,
+  purpose: Pending2faPurpose,
+  secret?: string
+): Promise<void> {
+  const jwt = await new SignJWT({
+    email,
+    purpose,
+    ...(secret ? { secret } : {}),
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${PENDING_MAX_AGE_SECONDS}s`)
+    .sign(getJwtSecret());
+
+  const jar = await cookies();
+  jar.set(PENDING_COOKIE_NAME, jwt, {
+    httpOnly: true,
+    secure: env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: PENDING_MAX_AGE_SECONDS,
+  });
+}
+
+export async function getPending2fa(): Promise<Pending2faState | null> {
+  const jar = await cookies();
+  const token = jar.get(PENDING_COOKIE_NAME)?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, getJwtSecret());
+    if (typeof payload.email !== "string") return null;
+    if (payload.purpose !== "totp" && payload.purpose !== "totp-setup") {
+      return null;
+    }
+    return {
+      email: payload.email,
+      purpose: payload.purpose,
+      secret: typeof payload.secret === "string" ? payload.secret : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function clearPending2faCookie(): Promise<void> {
+  const jar = await cookies();
+  jar.set(PENDING_COOKIE_NAME, "", {
+    httpOnly: true,
+    secure: env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+}
+
+export const PENDING_2FA_COOKIE_NAME = PENDING_COOKIE_NAME;

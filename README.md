@@ -192,9 +192,13 @@ function verifyLicense(response) {
   via email.
 - **Webhook auth** is HMAC-SHA256 over `${ts}.${rawBody}`; timestamp
   must be within ±5 minutes.
-- **Dashboard auth** is HS256 JWT in an `httpOnly` cookie. The single
-  user is hardcoded in env for now — swap `verifyCredentials` to a
-  Prisma lookup when you add a User table.
+- **Dashboard auth** is HS256 JWT in an `httpOnly` cookie, plus **TOTP
+  two-factor authentication** (RFC 6238, 6-digit, 30s): after the
+  password step, a 6-digit code from your authenticator app is required.
+  The TOTP secret is stored encrypted (AES-GCM) in the `AppSetting`
+  table; `pnpm bootstrap:2fa` generates the secret + QR. The single user
+  is hardcoded in env for now — swap `verifyCredentials` to a Prisma
+  lookup when you add a User table.
 - **Signing keys** are ECDSA P-256, generated per product. Public keys
   are visible in the dashboard; private keys are AES-256-GCM encrypted
   with `LICENSE_MASTER_KEY` before being persisted.
@@ -208,6 +212,23 @@ function verifyLicense(response) {
   License ID is the permanent identity — rotating a License Key updates
   the hash in place and never creates a new License row or drops device
   activations.
+
+### Two-factor authentication (dashboard)
+
+- Enabled via `pnpm bootstrap:2fa` — prints the otpauth URI, the base32
+  secret, and saves a QR PNG to `./totp-setup-qr.png` (delete the PNG
+  after scanning; it contains the secret). `--rotate` issues a fresh
+  secret (all previously issued codes stop working).
+- Login is two-step: password → 6-digit TOTP code (RFC 6238, 30s). If no
+  secret is configured, the first login forces `/setup-2fa` so you can
+  scan a new QR before getting a session.
+- **Lost your authenticator?** Delete the `admin_totp_secret` row from
+  the `AppSetting` table (e.g.
+  `DELETE FROM "AppSetting" WHERE key = 'admin_totp_secret';`). The next
+  login will then force the setup flow again and you can register a new
+  device. Note: anyone with database access can do this — acceptable for
+  a single-admin dashboard; a multi-user deployment should add per-user
+  recovery codes instead.
 
 ## Migration
 

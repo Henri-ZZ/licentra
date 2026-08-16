@@ -81,9 +81,9 @@ PUBLIC_KEYS = {
 
 **手动创建**（`POST /api/licenses`，admin）：线下 / 赠送 / 客服补偿等无 Paddle 交易的场景。只填邮箱即可（产品从下拉选），成功弹窗一次性展示 License Key——明文 key 依旧不入库。手创 License **没有 Order 关联**：Paddle 退款 webhook 不会自动吊销它，需要时在 dashboard 手动 Revoke。该端点仅 admin 会话可调。
 
-### 2.6 单用户鉴权
+### 2.6 单用户鉴权 + 双因素认证
 
-v1 没有 User 表，`ADMIN_EMAIL` / `ADMIN_PASSWORD` 写死（常量时间比较），登录后下发 HS256 JWT cookie。`proxy.ts`（Next.js 16 重命名自 `middleware.ts`）保护 `/dashboard/*`。**后续接多用户只需把 `verifyCredentials` 换成 Prisma lookup**。
+v1 没有 User 表，`ADMIN_EMAIL` / `ADMIN_PASSWORD` 写死（常量时间比较），登录后下发 HS256 JWT cookie。**TOTP 双因素**（RFC 6238，6 位 / 30s / HMAC-SHA1）：密码通过后必须输入验证码才能拿到完整会话；未配置密钥时强制走 `/setup-2fa` 设置页。密钥 base32 存 `AppSetting`（AES-GCM 加密），`pnpm bootstrap:2fa` 生成密钥 + 二维码（`--rotate` 轮换）。两步流程用 5 分钟有效的 `licentra_pending_2fa` cookie（JWT，含 purpose：`totp` / `totp-setup`）衔接，设置阶段的密钥内嵌在签名 cookie 里、不信任客户端输入。`proxy.ts`（Next.js 16 重命名自 `middleware.ts`）保护 `/dashboard/*` 与 `/setup-2fa`。**后续接多用户只需把 `verifyCredentials` 换成 Prisma lookup**。
 
 ### 2.7 离线迁移架构（v1 落地范围）
 
@@ -123,6 +123,7 @@ AuditEvent  (生命周期 / 迁移审计，独立)
 | `Order`        | `paddleTransactionId` (unique), `paddleEmail`, `productId`, `amount`(分), `currency`, `status`, `locale`                                                                                 |
 | `SigningKey`   | `kid` (unique, 如 `licentra-2026-08`), `algorithm`(Ed25519), `privateKeyEncrypted`, `publicKey`, `active`, `retiredAt` — 轮换保留旧键 |
 | `AuditEvent`   | `eventType`(`license.key_rotated` / `license.status_changed` / `license.migration_exported`), `licenseId`, `sourceSystem`/`sourceLicenseId`/`destinationSystem`/`migrationId`, `actor`, `metadata` |
+| `AppSetting`   | key-value 设置表（如 `admin_totp_secret`，值 AES-GCM 加密） |
 
 > 无 WebhookEvent 表：Paddle 后台保存权威投递记录（含重试与 payload）；幂等靠 `Order.paddleTransactionId` 唯一 + handler 本身幂等。物理表名仍为 `LicenseKey`（`@@map` 保留）。
 

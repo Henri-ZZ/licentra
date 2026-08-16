@@ -198,6 +198,16 @@ model AuditEvent {
   @@index([createdAt])
 }
 
+/// Small key-value store for app-level settings. Values are encrypted at
+/// rest with LICENSE_MASTER_KEY before being stored (see src/lib/crypto.ts).
+/// Used e.g. for the admin TOTP secret ("admin_totp_secret").
+model AppSetting {
+  key       String   @id
+  value     String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Order {
   id                  String   @id @default(nanoid(10))
   paddleTransactionId String   @unique
