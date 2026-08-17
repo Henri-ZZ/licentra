@@ -20,7 +20,7 @@ const envSchema = z.object({
   ADMIN_EMAIL: z
     .string()
     .email()
-    .default("henrizhang@henri.ren"),
+    .default("henriz@henri.ren"),
   ADMIN_PASSWORD: z.string().min(1).default("Gun748.."),
   AUTH_JWT_SECRET: z
     .string()
