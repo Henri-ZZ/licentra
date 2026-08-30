@@ -104,7 +104,7 @@ export default async function ProductsPage() {
                     <TableCell>{p._count.licenses}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="outline" size="sm" asChild>
-                        <Link href={`/dashboard/products/${p.id}`}>Edit</Link>
+                        <a href={`/dashboard/products/${p.id}`}>Edit</a>
                       </Button>
                     </TableCell>
                   </TableRow>
