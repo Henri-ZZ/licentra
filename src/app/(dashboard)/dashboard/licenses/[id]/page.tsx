@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 import { LicenseRowActions } from "@/app/(dashboard)/dashboard/licenses/license-row-actions";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +34,14 @@ export default async function LicenseDetailPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6 max-w-[72rem]">
+      <Link
+        href="/dashboard/licenses"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" />
+        Back to licenses
+      </Link>
+
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">License</h1>
@@ -80,6 +90,16 @@ export default async function LicenseDetailPage({ params }: PageProps) {
           {license.revokedAt && (
             <Row label="Revoked at" value={formatDateTimeCn(license.revokedAt)} />
           )}
+          <Row
+            label="Emailed"
+            value={
+              license.emailedAt ? (
+                <Badge variant="success">sent</Badge>
+              ) : (
+                <Badge variant="destructive">pending</Badge>
+              )
+            }
+          />
           <Row label="Emailed at" value={formatDateTimeCn(license.emailedAt)} />
           {license.emailError && (
             <Row label="Last email error" value={license.emailError} />

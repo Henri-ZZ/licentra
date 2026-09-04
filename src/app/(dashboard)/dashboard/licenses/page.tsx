@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { CreateLicenseDialog } from "@/app/(dashboard)/dashboard/licenses/create-license-dialog";
+import { LicensesRefreshButton } from "@/app/(dashboard)/dashboard/licenses/licenses-refresh-button";
 import { LicensesSearchForm } from "@/app/(dashboard)/dashboard/licenses/licenses-search-form";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -79,12 +80,15 @@ export default async function LicensesPage({ searchParams }: PageProps) {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Search</CardTitle>
-          <CardDescription>
-            Filter by product, customer email, paddle transaction ID, or license
-            ID.
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div className="space-y-1.5">
+            <CardTitle>Search</CardTitle>
+            <CardDescription>
+              Filter by product, customer email, paddle transaction ID, or
+              license ID.
+            </CardDescription>
+          </div>
+          <LicensesRefreshButton />
         </CardHeader>
         <CardContent>
           <LicensesSearchForm
@@ -114,7 +118,6 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                   <TableHead>Activations</TableHead>
                   <TableHead>Last activated</TableHead>
                   <TableHead>Last check-in</TableHead>
-                  <TableHead>Emailed</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -162,13 +165,6 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap">
                         {formatDateTimeCn(lastCheckedInAt)}
-                      </TableCell>
-                      <TableCell>
-                        {l.emailedAt ? (
-                          <Badge variant="success">sent</Badge>
-                        ) : (
-                          <Badge variant="destructive">pending</Badge>
-                        )}
                       </TableCell>
                       <TableCell>
                         {l.revoked ? (
