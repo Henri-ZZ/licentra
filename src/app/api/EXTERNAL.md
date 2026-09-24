@@ -25,6 +25,16 @@ product's public key + fingerprint on the product detail page. The client
 embeds the public key at build time and uses it to verify the
 `signature` returned by these endpoints.
 
+**CORS**: browser clients (extensions, desktop web apps) that call
+`/api/license/*` from a non-HTTP origin are supported by the proxy in
+`src/proxy.ts`. It reflects `chrome-extension://`, `moz-extension://`,
+`safari-web-extension://` and `extension://` origins, answers the `OPTIONS`
+preflight with `204` (`Access-Control-Allow-Methods: POST, OPTIONS`,
+`Access-Control-Allow-Headers: Content-Type`), and sends no
+`Access-Control-Allow-Credentials` — these endpoints take no cookies.
+Regular web origins receive no `Access-Control-Allow-Origin` header and stay
+blocked by the browser.
+
 ## Algorithm
 
 Both endpoints take a license key (the customer's copy, e.g.
