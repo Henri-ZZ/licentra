@@ -80,7 +80,8 @@ the credential — there is no separate API key.
 {
   "key": "K3PQ-W7HN-8YJZ-V9D2",
   "fingerprint": "device-uuid-or-hash",
-  "label": "MacBook Pro"
+  "label": "MacBook Pro",
+  "appVersion": "1.4.2"
 }
 ```
 
@@ -93,11 +94,13 @@ license is at its `maxActivations`, the **oldest** activation is evicted
 ```json
 {
   "key": "...",
-  "fingerprint": "..."
+  "fingerprint": "...",
+  "appVersion": "1.4.2"
 }
 ```
 
-Refreshes `lastCheckedAt` and returns the signed payload. Returns
+Refreshes `lastCheckedAt` (and records `appVersion`, if supplied) and
+returns the signed payload. Returns
 `{valid: false, reason}` if the license has been revoked, refunded, or
 this fingerprint was evicted.
 

@@ -195,15 +195,17 @@ one is created.
 {
   "key": "ABCD-1234-EFGH-5678",
   "fingerprint": "machine-id-or-hash",
-  "label": "Alice's MacBook"
+  "label": "Alice's MacBook",
+  "appVersion": "1.4.2"
 }
 ```
 
-| Field       | Type    | Required | Notes                                    |
-|-------------|---------|----------|------------------------------------------|
-| key         | string  | yes      | The customer license key                |
-| fingerprint | string  | yes      | Stable per-machine identifier           |
-| label       | string? | no       | ≤ 120 chars; human-readable device name |
+| Field       | Type    | Required | Notes                                      |
+|-------------|---------|----------|--------------------------------------------|
+| key         | string  | yes      | The customer license key                  |
+| fingerprint | string  | yes      | Stable per-machine identifier             |
+| label       | string? | no       | ≤ 120 chars; human-readable device name   |
+| appVersion  | string? | no       | ≤ 32 chars; client/plugin version, e.g. `1.4.2` |
 
 **Responses**
 | Status | Body                                                                          |
@@ -217,7 +219,7 @@ silently and the new fingerprint is bound).
 
 **Side effects**: writes a row in `Activation` (or updates
 `lastCheckedAt`), captures `IP` from `X-Forwarded-For` and `User-Agent`
-from headers.
+from headers, and stores `appVersion` when provided.
 
 ### `POST /api/license/check-in`
 
@@ -234,14 +236,16 @@ has passed (default 24h — controlled by the product's
 ```json
 {
   "key": "ABCD-1234-EFGH-5678",
-  "fingerprint": "machine-id-or-hash"
+  "fingerprint": "machine-id-or-hash",
+  "appVersion": "1.4.2"
 }
 ```
 
-| Field       | Type    | Required | Notes                                    |
-|-------------|---------|----------|------------------------------------------|
-| key         | string  | yes      |                                          |
-| fingerprint | string  | yes      |                                          |
+| Field       | Type    | Required | Notes                                          |
+|-------------|---------|----------|------------------------------------------------|
+| key         | string  | yes      |                                                |
+| fingerprint | string  | yes      |                                                |
+| appVersion  | string? | no       | ≤ 32 chars; client/plugin version (e.g. `1.4.2`) |
 
 **Responses**
 | Status | Body                                                                       |

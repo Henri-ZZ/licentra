@@ -45,6 +45,7 @@ export const openApiSpec = {
                 key: "ABCD-1234-EFGH-5678",
                 fingerprint: "mac-abc123def",
                 label: "Alice's MacBook",
+                appVersion: "1.4.2",
               },
             },
           },
@@ -76,7 +77,9 @@ export const openApiSpec = {
           "Confirms the fingerprint is still bound. The client re-checks when " +
           "`payload.valid_until` has passed. If the fingerprint was evicted " +
           "(e.g. another machine displaced it), returns `activation_evicted` so " +
-          "the client can prompt re-activation.",
+          "the client can prompt re-activation. " +
+          "Passing `appVersion` records the running client version on the " +
+          "activation, shown in the dashboard's Last check-in column.",
         requestBody: {
           required: true,
           content: {
@@ -85,6 +88,7 @@ export const openApiSpec = {
               example: {
                 key: "ABCD-1234-EFGH-5678",
                 fingerprint: "mac-abc123def",
+                appVersion: "1.4.2",
               },
             },
           },
@@ -369,6 +373,13 @@ export const openApiSpec = {
           key: { type: "string", minLength: 1 },
           fingerprint: { type: "string", minLength: 1, description: "Stable per-machine identifier" },
           label: { type: "string", maxLength: 120, description: "Human-readable device name" },
+          appVersion: {
+            type: "string",
+            maxLength: 32,
+            description:
+              "Optional plugin/app version the client is running (e.g. '1.4.2'). " +
+              "Stored on the activation and surfaced in the dashboard.",
+          },
         },
       },
       CheckInRequest: {
@@ -377,6 +388,13 @@ export const openApiSpec = {
         properties: {
           key: { type: "string", minLength: 1 },
           fingerprint: { type: "string", minLength: 1 },
+          appVersion: {
+            type: "string",
+            maxLength: 32,
+            description:
+              "Optional plugin/app version the client is running (e.g. '1.4.2'). " +
+              "Stored on the activation and surfaced in the dashboard.",
+          },
         },
       },
       LicensePayload: {

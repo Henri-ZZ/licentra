@@ -119,7 +119,7 @@ AuditEvent  (生命周期 / 迁移审计，独立)
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Product`      | `slug` (unique), `paddleProductId` (unique), `privateKeyEncrypted`, `publicKey`, `publicKeyFingerprint` (unique), `maxActivations`, `signatureTtlSeconds`, `supportEmail`             |
 | `License`      | `id` (**永久 License 身份**), `keyHash` (unique, **SHA-256(原始 key)，可轮换**), `productId`, `orderId`, `tierId`/`plan`/`expiresAt` (快照), `maxActivations`, `revoked`/`revokedAt`/`revokedReason`, `customerId`/`email`, `emailedAt`/`emailError`/`emailAttempts` |
-| `Activation`   | `licenseId`, `fingerprint` (**SHA-256(原始设备指纹)**, 不是原始值), `label`, `ipAddress`, `browser` (**精简 UA：如 `Chrome 126 · macOS`**), `lastCheckedAt`, 唯一 `(licenseId, fingerprint)` |
+| `Activation`   | `licenseId`, `fingerprint` (**SHA-256(原始设备指纹)**, 不是原始值), `label`, `ipAddress`, `browser` (**精简 UA：如 `Chrome 126 · macOS`**), `appVersion` (**客户端/插件上报版本，可选**), `lastCheckedAt`, 唯一 `(licenseId, fingerprint)` |
 | `Order`        | `paddleTransactionId` (unique), `paddleEmail`, `productId`, `amount`(分), `currency`, `status`, `locale`                                                                                 |
 | `SigningKey`   | `kid` (unique, 如 `licentra-2026-08`), `algorithm`(Ed25519), `privateKeyEncrypted`, `publicKey`, `active`, `retiredAt` — 轮换保留旧键 |
 | `AuditEvent`   | `eventType`(`license.key_rotated` / `license.status_changed` / `license.migration_exported`), `licenseId`, `sourceSystem`/`sourceLicenseId`/`destinationSystem`/`migrationId`, `actor`, `metadata` |

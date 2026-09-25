@@ -150,6 +150,9 @@ model Activation {
   // Compact browser summary (e.g. "Chrome 126 · macOS") parsed from the
   // User-Agent at activation time. The raw UA string is NOT stored.
   browser       String?
+  // Plugin/app version reported by the client on activate / check-in
+  // (e.g. "1.4.2"). Optional: older clients that don't send it stay null.
+  appVersion    String?
   lastCheckedAt DateTime   @default(now())
   createdAt     DateTime   @default(now())
 

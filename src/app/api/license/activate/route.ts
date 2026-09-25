@@ -12,6 +12,9 @@ const bodySchema = z.object({
   key: z.string().min(1),
   fingerprint: z.string().min(1),
   label: z.string().max(120).optional(),
+  // Optional plugin/app version the client is running. Older clients omit
+  // it — the column simply stays null for them.
+  appVersion: z.string().max(32).optional(),
 });
 
 /**
@@ -90,6 +93,7 @@ export async function POST(request: NextRequest) {
         data: {
           lastCheckedAt: new Date(),
           label: parsed.data.label ?? existing.label,
+          appVersion: parsed.data.appVersion ?? existing.appVersion,
           ipAddress,
           browser,
         },
@@ -109,6 +113,7 @@ export async function POST(request: NextRequest) {
         licenseId: license.id,
         fingerprint: fpHash,
         label: parsed.data.label,
+        appVersion: parsed.data.appVersion,
         ipAddress,
         browser,
       },

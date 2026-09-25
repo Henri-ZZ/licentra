@@ -129,11 +129,15 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                     ? l.activations[l.activations.length - 1]
                     : null;
                   const lastActivatedAt = lastActivation?.createdAt ?? null;
-                  const lastCheckedInAt = l.activations.reduce<Date | null>(
-                    (max, a) =>
-                      max === null || a.lastCheckedAt > max
-                        ? a.lastCheckedAt
-                        : max,
+                  // The device that checked in most recently — its appVersion
+                  // is the freshest one we've seen for this license.
+                  const lastCheckIn = l.activations.reduce<
+                    (typeof l.activations)[number] | null
+                  >(
+                    (latest, a) =>
+                      latest === null || a.lastCheckedAt > latest.lastCheckedAt
+                        ? a
+                        : latest,
                     null,
                   );
                   return (
@@ -164,7 +168,18 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                         </div>
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap">
-                        {formatDateTimeCn(lastCheckedInAt)}
+                        <div className="flex items-center gap-1.5">
+                          <span>
+                            {formatDateTimeCn(
+                              lastCheckIn?.lastCheckedAt ?? null,
+                            )}
+                          </span>
+                          {lastCheckIn?.appVersion && (
+                            <span className="rounded border px-1 text-[10px] leading-4 text-muted-foreground">
+                              v{lastCheckIn.appVersion}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {l.revoked ? (

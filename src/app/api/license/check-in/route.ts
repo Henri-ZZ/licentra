@@ -11,6 +11,9 @@ import { prisma } from "@/lib/prisma";
 const bodySchema = z.object({
   key: z.string().min(1),
   fingerprint: z.string().min(1),
+  // Optional plugin/app version the client is running. Older clients omit
+  // it — the column simply stays null for them.
+  appVersion: z.string().max(32).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -63,7 +66,10 @@ export async function POST(request: NextRequest) {
 
   await prisma.activation.update({
     where: { id: activation.id },
-    data: { lastCheckedAt: new Date() },
+    data: {
+      lastCheckedAt: new Date(),
+      appVersion: parsed.data.appVersion ?? activation.appVersion,
+    },
   });
 
   return NextResponse.json(await buildLicenseResponse(license));
