@@ -80,7 +80,6 @@ the credential — there is no separate API key.
 {
   "key": "K3PQ-W7HN-8YJZ-V9D2",
   "fingerprint": "device-uuid-or-hash",
-  "label": "MacBook Pro",
   "appVersion": "1.4.2"
 }
 ```

@@ -195,7 +195,6 @@ one is created.
 {
   "key": "ABCD-1234-EFGH-5678",
   "fingerprint": "machine-id-or-hash",
-  "label": "Alice's MacBook",
   "appVersion": "1.4.2"
 }
 ```
@@ -204,7 +203,6 @@ one is created.
 |-------------|---------|----------|--------------------------------------------|
 | key         | string  | yes      | The customer license key                  |
 | fingerprint | string  | yes      | Stable per-machine identifier             |
-| label       | string? | no       | ≤ 120 chars; human-readable device name   |
 | appVersion  | string? | no       | ≤ 32 chars; client/plugin version, e.g. `1.4.2` |
 
 **Responses**

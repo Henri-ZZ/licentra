@@ -124,7 +124,6 @@ export default async function LicenseDetailPage({ params }: PageProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Label</TableHead>
                   <TableHead>Fingerprint</TableHead>
                   <TableHead>Browser</TableHead>
                   <TableHead>App version</TableHead>
@@ -136,7 +135,6 @@ export default async function LicenseDetailPage({ params }: PageProps) {
               <TableBody>
                 {license.activations.map((a) => (
                   <TableRow key={a.id}>
-                    <TableCell>{a.label ?? "—"}</TableCell>
                     <TableCell className="font-mono text-xs">
                       {a.fingerprint.slice(0, 16)}…
                     </TableCell>

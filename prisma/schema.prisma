@@ -145,7 +145,6 @@ model Activation {
   licenseId     String     @map("licenseKeyId")
   license       License    @relation(fields: [licenseId], references: [id], onDelete: Cascade)
   fingerprint   String
-  label         String?
   ipAddress     String?
   // Compact browser summary (e.g. "Chrome 126 · macOS") parsed from the
   // User-Agent at activation time. The raw UA string is NOT stored.

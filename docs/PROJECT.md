@@ -119,7 +119,7 @@ AuditEvent  (生命周期 / 迁移审计，独立)
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Product`      | `slug` (unique), `paddleProductId` (unique), `privateKeyEncrypted`, `publicKey`, `publicKeyFingerprint` (unique), `maxActivations`, `signatureTtlSeconds`, `supportEmail`             |
 | `License`      | `id` (**永久 License 身份**), `keyHash` (unique, **SHA-256(原始 key)，可轮换**), `productId`, `orderId`, `tierId`/`plan`/`expiresAt` (快照), `maxActivations`, `revoked`/`revokedAt`/`revokedReason`, `customerId`/`email`, `emailedAt`/`emailError`/`emailAttempts` |
-| `Activation`   | `licenseId`, `fingerprint` (**SHA-256(原始设备指纹)**, 不是原始值), `label`, `ipAddress`, `browser` (**精简 UA：如 `Chrome 126 · macOS`**), `appVersion` (**客户端/插件上报版本，可选**), `lastCheckedAt`, 唯一 `(licenseId, fingerprint)` |
+| `Activation`   | `licenseId`, `fingerprint` (**SHA-256(原始设备指纹)**, 不是原始值), `ipAddress`, `browser` (**精简 UA：如 `Chrome 126 · macOS`**), `appVersion` (**客户端/插件上报版本，可选**), `lastCheckedAt`, 唯一 `(licenseId, fingerprint)` |
 | `Order`        | `paddleTransactionId` (unique), `paddleEmail`, `productId`, `amount`(分), `currency`, `status`, `locale`                                                                                 |
 | `SigningKey`   | `kid` (unique, 如 `licentra-2026-08`), `algorithm`(Ed25519), `privateKeyEncrypted`, `publicKey`, `active`, `retiredAt` — 轮换保留旧键 |
 | `AuditEvent`   | `eventType`(`license.key_rotated` / `license.status_changed` / `license.migration_exported`), `licenseId`, `sourceSystem`/`sourceLicenseId`/`destinationSystem`/`migrationId`, `actor`, `metadata` |
@@ -200,7 +200,7 @@ handleTransactionUpdated
   │           └─ 已过期 → 调 /api/license/check-in 刷新签名
   │
   └─ 无缓存 / 首次启动 → POST /api/license/activate
-      { key, fingerprint, label }
+      { key, fingerprint }
         │
         └─ 服务端:
             ├─ license 不存在 / 吊销 → { valid: false }
@@ -215,7 +215,7 @@ handleTransactionUpdated
 
 | 端点                           | 入参                                               | 行为                                              | 副作用           |
 | ------------------------------ | -------------------------------------------------- | ------------------------------------------------- | ---------------- |
-| `POST /api/license/activate`   | `{ key, fingerprint, label? }`                     | 同 fp 刷新 / 新 fp 注册 / 满则 FIFO 踢出；返回 ECDSA payload + **Signed Certificate** | 写 Activation    |
+| `POST /api/license/activate`   | `{ key, fingerprint }`                             | 同 fp 刷新 / 新 fp 注册 / 满则 FIFO 踢出；返回 ECDSA payload + **Signed Certificate** | 写 Activation    |
 | `POST /api/license/check-in`   | `{ key, fingerprint }`                             | 验证 license + 验证 fp 仍绑定，刷新 lastCheckedAt；返回 payload + **Signed Certificate** | 写 lastCheckedAt |
 | `GET /api/v1/well-known/licentra-keys` | —                                          | 公开返回 Licentra Ed25519 公钥集（含已轮换旧键）  | 无               |
 | `POST /api/v1/migration/export` | `{ productId?, licenseIds?, destinationSystem?, includeCustomerData?, migrationId? }` | admin 会话 + 限流；生成**签名批量导出**；写审计 | 写 AuditEvent    |
@@ -393,7 +393,7 @@ licentra/
 ### `POST /api/license/activate`
 
 ```json
-请求: { "key": "...", "fingerprint": "<设备指纹原文>", "label": "MacBook Pro" }
+请求: { "key": "...", "fingerprint": "<设备指纹原文>" }
 成功响应:
 {
   "valid": true,

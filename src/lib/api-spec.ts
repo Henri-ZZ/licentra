@@ -44,7 +44,6 @@ export const openApiSpec = {
               example: {
                 key: "ABCD-1234-EFGH-5678",
                 fingerprint: "mac-abc123def",
-                label: "Alice's MacBook",
                 appVersion: "1.4.2",
               },
             },
@@ -372,7 +371,6 @@ export const openApiSpec = {
         properties: {
           key: { type: "string", minLength: 1 },
           fingerprint: { type: "string", minLength: 1, description: "Stable per-machine identifier" },
-          label: { type: "string", maxLength: 120, description: "Human-readable device name" },
           appVersion: {
             type: "string",
             maxLength: 32,
