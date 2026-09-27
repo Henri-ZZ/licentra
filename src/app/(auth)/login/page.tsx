@@ -1,41 +1,56 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { LoginForm } from "@/app/(auth)/login-form";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSessionEmail } from "@/lib/auth";
 import { henrizSsoEnabled } from "@/lib/henriz-auth";
+// Legacy email + password + TOTP form — hidden in favour of central SSO.
+// Uncomment together with the actions in ./actions.ts to roll back.
+// import { LoginForm } from "@/app/(auth)/login-form";
 
 interface LoginPageProps {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; error?: string }>;
+}
+
+function safeNext(value: string | undefined): string {
+  return value && value.startsWith("/") && !value.startsWith("//")
+    ? value
+    : "/dashboard";
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const session = await getSessionEmail();
-  if (session) redirect("/dashboard");
+  if (await getSessionEmail()) redirect("/dashboard");
 
   const sp = await searchParams;
+  const ssoEntry = `/auth/login?returnTo=${encodeURIComponent(safeNext(sp.next))}`;
+
+  // Central SSO is the only way in: this page just forwards to it. A failed
+  // callback lands here with ?error=sso and gets a message instead of another
+  // redirect, otherwise the two pages would bounce forever.
+  if (henrizSsoEnabled() && !sp.error) redirect(ssoEntry);
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="text-center space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Licentra</h1>
-          <p className="text-sm text-muted-foreground">Sign in to your dashboard</p>
-        </div>
-        <LoginForm next={sp.next ?? "/dashboard"} />
-        {henrizSsoEnabled() && (
-          <p className="text-center text-xs text-muted-foreground">
-            Central SSO enabled ·{" "}
-            <Link
-              className="underline underline-offset-2"
-              href={`/auth/login?returnTo=${encodeURIComponent(
-                sp.next ?? "/dashboard"
-              )}`}
-            >
-              sign in with henriz-auth
-            </Link>
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle>
+            {sp.error ? "Sign-in failed" : "Central SSO not configured"}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {sp.error
+              ? "The central login could not be completed. Start over to try again."
+              : "This deployment has no henriz-auth client configured, so there is no way to sign in."}
           </p>
-        )}
-      </div>
+          {henrizSsoEnabled() && (
+            <Button asChild className="w-full">
+              <Link href={ssoEntry}>Sign in with henriz-auth</Link>
+            </Button>
+          )}
+        </CardContent>
+      </Card>
     </main>
   );
 }

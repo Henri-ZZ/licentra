@@ -1,8 +1,9 @@
 # Dashboard / Frontend API
 
-Endpoints the Licentra admin dashboard calls. All endpoints require a
-session cookie set by `POST /api/auth/login`. The cookie is HTTP-only and
-issued by `createSessionCookie()` in `src/lib/auth.ts`.
+Endpoints the Licentra admin dashboard calls. All endpoints require the
+`licentra_session` cookie, which is HTTP-only and issued by
+`createSessionCookie()` in `src/lib/auth.ts` — normally from the central SSO
+callback (`GET /auth/callback`).
 
 **Base URL**: same origin as the dashboard (no separate host in v1).
 
@@ -19,23 +20,24 @@ or as a typed object.
 
 ## Auth
 
-### `POST /api/auth/login`
+Sign-in is central SSO only (`auth.henriz.dev`) — the dashboard has no password
+endpoint any more.
 
-Sign in. Sets the session cookie on success.
+1. `GET /dashboard` without a session → `GET /auth/login?returnTo=…` → 302 to the
+   central `authorize` URL.
+2. The central service authenticates the admin (Passkey or 6-digit code) and
+   redirects back to `GET /auth/callback?code=…&state=…`.
+3. The callback exchanges the code server-to-server and issues the
+   `licentra_session` cookie via `createSessionCookie()`.
 
-**Request body**
+See `auth-henriz-dev/docs/SSO_INTEGRATION.md` for the full flow.
 
-```json
-{ "email": "you@example.com", "password": "…" }
-```
+### `POST /api/auth/login` — **disabled**
 
-**Responses**
-| Status | Body | Notes |
-|--------|---------------------------------------|--------------------------------|
-| 200 | `{ "ok": true }` | Sets `licentra_session` cookie |
-| 400 | `{ "error": "invalid_json" }` | Body wasn't JSON |
-| 400 | `{ "error": "invalid_payload", … }` | Missing/invalid fields |
-| 401 | `{ "error": "invalid_credentials" }` | Wrong email or password |
+Always returns `410 { "error": "password_login_disabled" }`. The previous
+email + password implementation is kept commented out in
+`src/app/api/auth/login/route.ts`, and the matching server actions are stubbed
+in `src/app/(auth)/actions.ts`. Both exist only for rollback.
 
 ### `POST /api/auth/logout`
 

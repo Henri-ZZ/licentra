@@ -1,3 +1,21 @@
+import { NextResponse } from "next/server";
+
+/**
+ * Legacy `POST /api/auth/login` (email + password → session cookie).
+ *
+ * Disabled: Licentra now signs in exclusively through central SSO
+ * (auth.henriz.dev) — see `src/app/auth/login/route.ts` and
+ * auth-henriz-dev/docs/SSO_INTEGRATION.md. The original implementation is kept
+ * below in a comment so a rollback is a single uncomment.
+ */
+export async function POST() {
+  return NextResponse.json(
+    { error: "password_login_disabled" },
+    { status: 410 }
+  );
+}
+
+/*
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
@@ -36,3 +54,4 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ ok: true });
 }
+*/

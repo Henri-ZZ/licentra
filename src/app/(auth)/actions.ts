@@ -12,6 +12,15 @@ import {
 import { generateTotpSecret } from "@/lib/totp";
 import { getTotpSecret, setTotpSecret, verifyTotp } from "@/lib/totp";
 
+/**
+ * Legacy email + password + TOTP server actions.
+ *
+ * Disabled: Licentra signs in exclusively through central SSO
+ * (auth.henriz.dev) — see `src/app/auth/login/route.ts` and
+ * auth-henriz-dev/docs/SSO_INTEGRATION.md. Each original implementation is kept
+ * in a comment below the stub so a rollback is a single uncomment.
+ */
+
 export interface LoginState {
   error?: string;
   /** Password OK + a TOTP secret is configured → show the 6-digit step. */
@@ -25,16 +34,20 @@ export interface TotpState {
   error?: string;
 }
 
+/** Kept for the commented-out bodies below. */
 function safeNext(value: string): string {
   return value.startsWith("/") ? value : "/dashboard";
 }
 
 export async function loginAction(
   _prev: LoginState,
-  formData: FormData
+  _formData: FormData
 ): Promise<LoginState> {
-  const email = String(formData.get("email") ?? "");
-  const password = String(formData.get("password") ?? "");
+  return { error: "Password sign-in is disabled. Use central SSO." };
+
+  /*
+  const email = String(_formData.get("email") ?? "");
+  const password = String(_formData.get("password") ?? "");
 
   const ok = await verifyCredentials(email, password);
   if (!ok) {
@@ -50,14 +63,18 @@ export async function loginAction(
   // No secret configured → force setup before granting a session.
   await createPending2faCookie(email, "totp-setup", generateTotpSecret());
   return { needSetup: true };
+  */
 }
 
 export async function verifyTotpAction(
   _prev: TotpState,
-  formData: FormData
+  _formData: FormData
 ): Promise<TotpState> {
-  const code = String(formData.get("code") ?? "").trim();
-  const next = safeNext(String(formData.get("next") ?? "/dashboard"));
+  return { error: "Password sign-in is disabled. Use central SSO." };
+
+  /*
+  const code = String(_formData.get("code") ?? "").trim();
+  const next = safeNext(String(_formData.get("next") ?? "/dashboard"));
 
   const pending = await getPending2fa();
   if (!pending || pending.purpose !== "totp") {
@@ -71,13 +88,17 @@ export async function verifyTotpAction(
   await createSessionCookie(pending.email);
   await clearPending2faCookie();
   redirect(next);
+  */
 }
 
 export async function confirmTotpSetupAction(
   _prev: TotpState,
-  formData: FormData
+  _formData: FormData
 ): Promise<TotpState> {
-  const code = String(formData.get("code") ?? "").trim();
+  return { error: "Password sign-in is disabled. Use central SSO." };
+
+  /*
+  const code = String(_formData.get("code") ?? "").trim();
 
   const pending = await getPending2fa();
   // Secret is read from the signed pending cookie — never from client input.
@@ -92,4 +113,5 @@ export async function confirmTotpSetupAction(
   await createSessionCookie(pending.email);
   await clearPending2faCookie();
   redirect("/dashboard");
+  */
 }
