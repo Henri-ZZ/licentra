@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
+import { distributionSchema } from "@/lib/license-distribution";
 import {
   buildLicenseResponse,
   loadLicenseByHash,
@@ -14,6 +15,9 @@ const bodySchema = z.object({
   // Optional plugin/app version the client is running. Older clients omit
   // it — the column simply stays null for them.
   appVersion: z.string().max(32).optional(),
+  // Optional build-injected channel of the client artifact. Older clients
+  // omit it — the column simply stays null for them.
+  distribution: distributionSchema,
 });
 
 export async function POST(request: NextRequest) {
@@ -69,6 +73,9 @@ export async function POST(request: NextRequest) {
     data: {
       lastCheckedAt: new Date(),
       appVersion: parsed.data.appVersion ?? activation.appVersion,
+      // Backfill-only: activations created before the client sent a channel
+      // pick it up here, and an existing value is never overwritten.
+      distribution: activation.distribution ?? parsed.data.distribution,
     },
   });
 

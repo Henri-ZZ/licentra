@@ -152,6 +152,12 @@ model Activation {
   // Plugin/app version reported by the client on activate / check-in
   // (e.g. "1.4.2"). Optional: older clients that don't send it stay null.
   appVersion    String?
+  // Distribution channel the client artifact was built for
+  // (chrome_web_store / edge_addons / direct / development). Build-injected,
+  // never inferred from the runtime browser. Optional: clients predating the
+  // field leave it null. Filled once and then never overwritten, so it answers
+  // "where did this activation come from?", not "which build checked in last".
+  distribution  String?
   lastCheckedAt DateTime   @default(now())
   createdAt     DateTime   @default(now())
 

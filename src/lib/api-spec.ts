@@ -45,6 +45,7 @@ export const openApiSpec = {
                 key: "ABCD-1234-EFGH-5678",
                 fingerprint: "mac-abc123def",
                 appVersion: "1.4.2",
+                distribution: "chrome_web_store",
               },
             },
           },
@@ -78,7 +79,9 @@ export const openApiSpec = {
           "(e.g. another machine displaced it), returns `activation_evicted` so " +
           "the client can prompt re-activation. " +
           "Passing `appVersion` records the running client version on the " +
-          "activation, shown in the dashboard's Last check-in column.",
+          "activation, shown in the dashboard's Last check-in column. " +
+          "`distribution` only backfills the channel of activations created " +
+          "before the client started sending it.",
         requestBody: {
           required: true,
           content: {
@@ -88,6 +91,7 @@ export const openApiSpec = {
                 key: "ABCD-1234-EFGH-5678",
                 fingerprint: "mac-abc123def",
                 appVersion: "1.4.2",
+                distribution: "chrome_web_store",
               },
             },
           },
@@ -378,6 +382,14 @@ export const openApiSpec = {
               "Optional plugin/app version the client is running (e.g. '1.4.2'). " +
               "Stored on the activation and surfaced in the dashboard.",
           },
+          distribution: {
+            type: "string",
+            enum: ["chrome_web_store", "edge_addons", "direct", "development"],
+            description:
+              "Optional build-injected distribution channel of the client " +
+              "artifact. Recorded once, when the activation is first seen, " +
+              "and never overwritten afterwards.",
+          },
         },
       },
       CheckInRequest: {
@@ -392,6 +404,14 @@ export const openApiSpec = {
             description:
               "Optional plugin/app version the client is running (e.g. '1.4.2'). " +
               "Stored on the activation and surfaced in the dashboard.",
+          },
+          distribution: {
+            type: "string",
+            enum: ["chrome_web_store", "edge_addons", "direct", "development"],
+            description:
+              "Optional build-injected distribution channel of the client " +
+              "artifact. Only backfills activations created before the client " +
+              "started sending it — an existing value is never overwritten.",
           },
         },
       },

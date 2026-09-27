@@ -195,15 +195,17 @@ one is created.
 {
   "key": "ABCD-1234-EFGH-5678",
   "fingerprint": "machine-id-or-hash",
-  "appVersion": "1.4.2"
+  "appVersion": "1.4.2",
+  "distribution": "chrome_web_store"
 }
 ```
 
-| Field       | Type    | Required | Notes                                      |
-|-------------|---------|----------|--------------------------------------------|
-| key         | string  | yes      | The customer license key                  |
-| fingerprint | string  | yes      | Stable per-machine identifier             |
-| appVersion  | string? | no       | ≤ 32 chars; client/plugin version, e.g. `1.4.2` |
+| Field        | Type    | Required | Notes                                      |
+|--------------|---------|----------|--------------------------------------------|
+| key          | string  | yes      | The customer license key                  |
+| fingerprint  | string  | yes      | Stable per-machine identifier             |
+| appVersion   | string? | no       | ≤ 32 chars; client/plugin version, e.g. `1.4.2` |
+| distribution | string? | no       | Build-injected channel of the client artifact: `chrome_web_store`, `edge_addons`, `direct`, `development` |
 
 **Responses**
 | Status | Body                                                                          |
@@ -217,7 +219,9 @@ silently and the new fingerprint is bound).
 
 **Side effects**: writes a row in `Activation` (or updates
 `lastCheckedAt`), captures `IP` from `X-Forwarded-For` and `User-Agent`
-from headers, and stores `appVersion` when provided.
+from headers, and stores `appVersion` when provided. `distribution` is
+written once, when the activation is first seen: a device that later reports
+a different channel does not overwrite the recorded one.
 
 ### `POST /api/license/check-in`
 
@@ -235,15 +239,17 @@ has passed (default 24h — controlled by the product's
 {
   "key": "ABCD-1234-EFGH-5678",
   "fingerprint": "machine-id-or-hash",
-  "appVersion": "1.4.2"
+  "appVersion": "1.4.2",
+  "distribution": "chrome_web_store"
 }
 ```
 
-| Field       | Type    | Required | Notes                                          |
-|-------------|---------|----------|------------------------------------------------|
-| key         | string  | yes      |                                                |
-| fingerprint | string  | yes      |                                                |
-| appVersion  | string? | no       | ≤ 32 chars; client/plugin version (e.g. `1.4.2`) |
+| Field        | Type    | Required | Notes                                          |
+|--------------|---------|----------|------------------------------------------------|
+| key          | string  | yes      |                                                |
+| fingerprint  | string  | yes      |                                                |
+| appVersion   | string? | no       | ≤ 32 chars; client/plugin version (e.g. `1.4.2`) |
+| distribution | string? | no       | Build-injected channel: `chrome_web_store`, `edge_addons`, `direct`, `development`. Backfill only — an existing value is never overwritten |
 
 **Responses**
 | Status | Body                                                                       |

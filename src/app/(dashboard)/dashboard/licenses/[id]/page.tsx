@@ -127,6 +127,7 @@ export default async function LicenseDetailPage({ params }: PageProps) {
                   <TableHead>Fingerprint</TableHead>
                   <TableHead>Browser</TableHead>
                   <TableHead>App version</TableHead>
+                  <TableHead>Channel</TableHead>
                   <TableHead>IP</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead>Last check-in</TableHead>
@@ -143,6 +144,9 @@ export default async function LicenseDetailPage({ params }: PageProps) {
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       {a.appVersion ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {a.distribution ?? "—"}
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       {a.ipAddress ?? "—"}
