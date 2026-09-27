@@ -15,9 +15,19 @@ export function SignOutButton() {
   async function onClick() {
     setInFlight(true);
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      const payload = (await response.json().catch(() => null)) as
+        | { redirectTo?: string }
+        | null;
+      // Central logout must happen in the browser (the SSO session cookie is
+      // browser-held), so leave the app instead of router.push("/login") —
+      // otherwise the SSO would sign us straight back in.
+      if (payload?.redirectTo) {
+        window.location.assign(payload.redirectTo);
+        return;
+      }
       startTransition(() => {
-        router.push("/login");
+        router.push("/login?loggedOut=1");
         router.refresh();
       });
     } finally {
