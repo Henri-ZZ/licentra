@@ -42,20 +42,21 @@ in `src/app/(auth)/actions.ts`. Both exist only for rollback.
 ### `POST /api/auth/logout`
 
 Clears the local session cookie **and** ends the central SSO session. The
-central logout lives on `auth.henriz.dev` and only touches its own cookies, so
-the response carries the URL the browser has to visit next — `SignOutButton`
-does `window.location.assign(redirectTo)`.
+central session lives in a browser-only cookie on `auth.henriz.dev`, so the
+browser has to be sent there — `SignOutButton` does
+`window.location.assign(redirectTo)`.
 
 **Request body**: none.
 
 **Responses**
 | Status | Body |
-|--------|----------------------------------------------------------------|
-| 200 | `{ "ok": true, "redirectTo": "https://auth.henriz.dev/logout?redirect_uri=…" }` |
+|--------|--------------------------------------------------|
+| 200 | `{ "ok": true, "redirectTo": "https://auth.henriz.dev/logout" }` |
 
-After the user confirms on the central page the browser returns to
-`/login?loggedOut=1`, which renders a "Signed out" card instead of bouncing
-straight into a new SSO round trip (that would look like a failed sign-out).
+`GET https://auth.henriz.dev/logout` signs out on sight: it revokes the central
+session, clears its cookies and lands on its own "已退出登录" screen. There is no
+confirmation step and notably no return here: `/login` would immediately start a
+new SSO round trip, so signing out would look like it failed.
 
 ---
 

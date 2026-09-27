@@ -10,7 +10,7 @@ import { henrizSsoEnabled } from "@/lib/henriz-auth";
 // import { LoginForm } from "@/app/(auth)/login-form";
 
 interface LoginPageProps {
-  searchParams: Promise<{ next?: string; error?: string; loggedOut?: string }>;
+  searchParams: Promise<{ next?: string; error?: string }>;
 }
 
 function safeNext(value: string | undefined): string {
@@ -26,29 +26,23 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const ssoEntry = `/auth/login?returnTo=${encodeURIComponent(safeNext(sp.next))}`;
 
   // Central SSO is the only way in: this page just forwards to it. A failed
-  // callback / a finished sign-out lands here with a message instead of another
-  // redirect, otherwise the two pages would bounce forever.
-  if (henrizSsoEnabled() && !sp.error && !sp.loggedOut) redirect(ssoEntry);
+  // callback lands here with a message instead of another redirect, otherwise
+  // the two pages would bounce forever.
+  if (henrizSsoEnabled() && !sp.error) redirect(ssoEntry);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>
-            {sp.error
-              ? "Sign-in failed"
-              : sp.loggedOut
-                ? "Signed out"
-                : "Central SSO not configured"}
+            {sp.error ? "Sign-in failed" : "Central SSO not configured"}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
             {sp.error
               ? "The central login could not be completed. Start over to try again."
-              : sp.loggedOut
-                ? "You have been signed out of the central login. Sign in again to continue."
-                : "This deployment has no henriz-auth client configured, so there is no way to sign in."}
+              : "This deployment has no henriz-auth client configured, so there is no way to sign in."}
           </p>
           {henrizSsoEnabled() && (
             <Button asChild className="w-full">
