@@ -42,8 +42,22 @@ export async function verifyCredentials(
   return diff === 0;
 }
 
-export async function createSessionCookie(email: string): Promise<void> {
-  const jwt = await new SignJWT({ email })
+export interface SessionClaims {
+  /** Central auth Admin id from auth.henriz.dev (SSO logins only). */
+  sub?: string;
+  /** How the central session authenticated: passkey | totp | bootstrap. */
+  authMethod?: string;
+}
+
+export async function createSessionCookie(
+  email: string,
+  claims: SessionClaims = {}
+): Promise<void> {
+  const jwt = await new SignJWT({
+    email,
+    ...(claims.sub ? { sub: claims.sub } : {}),
+    ...(claims.authMethod ? { authMethod: claims.authMethod } : {}),
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${COOKIE_MAX_AGE_SECONDS}s`)

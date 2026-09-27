@@ -85,8 +85,10 @@ export function proxy(request: NextRequest) {
     if (token) {
       return NextResponse.next();
     }
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("next", pathname);
+    // Hand the browser to the central SSO entry point. /auth/login falls back
+    // to the legacy form when SSO env vars are absent (lib/henriz-auth).
+    const loginUrl = new URL("/auth/login", request.url);
+    loginUrl.searchParams.set("returnTo", pathname + request.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 

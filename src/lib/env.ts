@@ -54,6 +54,24 @@ const envSchema = z.object({
     .email()
     .default("onboarding@resend.dev"),
 
+  // --- Central SSO (auth.henriz.dev) ---
+  // Optional: leave the client id/secret/redirect empty (or unset) and the app
+  // keeps using the legacy /login form. See
+  // auth-henriz-dev/docs/SSO_INTEGRATION.md.
+  HENRIZ_AUTH_BASE_URL: z
+    .string()
+    .url()
+    .or(z.literal(""))
+    .optional()
+    .transform((value) => value || "https://auth.henriz.dev"),
+  HENRIZ_AUTH_CLIENT_ID: z.string().min(1).or(z.literal("")).optional(),
+  HENRIZ_AUTH_CLIENT_SECRET: z
+    .string()
+    .min(32, "HENRIZ_AUTH_CLIENT_SECRET must be >= 32 chars")
+    .or(z.literal(""))
+    .optional(),
+  HENRIZ_AUTH_REDIRECT_URI: z.string().url().or(z.literal("")).optional(),
+
   // --- App ---
   NEXT_PUBLIC_APP_URL: z
     .string()
