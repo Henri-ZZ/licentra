@@ -140,6 +140,15 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                         : latest,
                     null,
                   );
+                  // Version + distribution badge, e.g. "v2.2.0 · chrome_web_store".
+                  const lastCheckInMeta = [
+                    lastCheckIn?.appVersion
+                      ? `v${lastCheckIn.appVersion}`
+                      : null,
+                    lastCheckIn?.distribution,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
                   return (
                     <TableRow key={l.id}>
                       <TableCell className="font-mono text-xs">
@@ -174,9 +183,9 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                               lastCheckIn?.lastCheckedAt ?? null,
                             )}
                           </span>
-                          {lastCheckIn?.appVersion && (
+                          {lastCheckInMeta && (
                             <span className="rounded border px-1 text-[10px] leading-4 text-muted-foreground">
-                              v{lastCheckIn.appVersion}
+                              {lastCheckInMeta}
                             </span>
                           )}
                         </div>
