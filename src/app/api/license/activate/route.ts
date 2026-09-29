@@ -96,9 +96,10 @@ export async function POST(request: NextRequest) {
         data: {
           lastCheckedAt: new Date(),
           appVersion: parsed.data.appVersion ?? existing.appVersion,
-          // Fill once, never overwrite: the channel records where this
-          // activation came from, not which build is checking in now.
-          distribution: existing.distribution ?? parsed.data.distribution,
+          // Follow the currently running artifact. A user may reinstall from
+          // another store or move the same activation between browsers. Older
+          // clients that omit the field preserve the last known value.
+          distribution: parsed.data.distribution ?? existing.distribution,
           ipAddress,
           browser,
         },

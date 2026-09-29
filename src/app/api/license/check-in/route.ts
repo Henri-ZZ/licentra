@@ -73,9 +73,10 @@ export async function POST(request: NextRequest) {
     data: {
       lastCheckedAt: new Date(),
       appVersion: parsed.data.appVersion ?? activation.appVersion,
-      // Backfill-only: activations created before the client sent a channel
-      // pick it up here, and an existing value is never overwritten.
-      distribution: activation.distribution ?? parsed.data.distribution,
+      // Follow the currently running artifact. A user may reinstall from
+      // another store or move the same activation between browsers. Older
+      // clients that omit the field preserve the last known value.
+      distribution: parsed.data.distribution ?? activation.distribution,
     },
   });
 

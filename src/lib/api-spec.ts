@@ -80,8 +80,8 @@ export const openApiSpec = {
           "the client can prompt re-activation. " +
           "Passing `appVersion` records the running client version on the " +
           "activation, shown in the dashboard's Last check-in column. " +
-          "`distribution` only backfills the channel of activations created " +
-          "before the client started sending it.",
+          "When supplied, `distribution` updates the activation to the channel " +
+          "reported by the currently running client artifact.",
         requestBody: {
           required: true,
           content: {
@@ -389,8 +389,8 @@ export const openApiSpec = {
             description:
               "Optional build-injected distribution channel of the client " +
               "artifact (for example 'cws' or 'edge'). Products may use any " +
-              "non-empty channel name. Recorded once, when the activation is first seen, " +
-              "and never overwritten afterwards.",
+              "non-empty channel name. When supplied, it replaces the activation's " +
+              "previously recorded channel.",
           },
         },
       },
@@ -414,8 +414,8 @@ export const openApiSpec = {
             description:
               "Optional build-injected distribution channel of the client " +
               "artifact (for example 'cws' or 'edge'). Products may use any " +
-              "non-empty channel name. Only backfills activations created before the client " +
-              "started sending it — an existing value is never overwritten.",
+              "non-empty channel name. When supplied, it replaces the activation's " +
+              "previously recorded channel.",
           },
         },
       },

@@ -155,8 +155,8 @@ model Activation {
   // Distribution channel the client artifact was built for (e.g. cws / edge).
   // Products own these values; Licentra accepts any non-empty channel name.
   // Build-injected, never inferred from the runtime browser. Clients predating the
-  // field leave it null. Filled once and then never overwritten, so it answers
-  // "where did this activation come from?", not "which build checked in last".
+  // field leave it null. Updated whenever a newer client reports a value, so
+  // it reflects the currently running artifact's channel.
   distribution  String?
   lastCheckedAt DateTime   @default(now())
   createdAt     DateTime   @default(now())

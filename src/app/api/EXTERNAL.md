@@ -219,9 +219,9 @@ silently and the new fingerprint is bound).
 
 **Side effects**: writes a row in `Activation` (or updates
 `lastCheckedAt`), captures `IP` from `X-Forwarded-For` and `User-Agent`
-from headers, and stores `appVersion` when provided. `distribution` is
-written once, when the activation is first seen: a device that later reports
-a different channel does not overwrite the recorded one.
+from headers, and stores `appVersion` when provided. When supplied,
+`distribution` replaces the activation's previously recorded channel; clients
+that omit it preserve the last known value.
 
 ### `POST /api/license/check-in`
 
@@ -249,7 +249,7 @@ has passed (default 24h — controlled by the product's
 | key          | string  | yes      |                                                |
 | fingerprint  | string  | yes      |                                                |
 | appVersion   | string? | no       | ≤ 32 chars; client/plugin version (e.g. `1.4.2`) |
-| distribution | string? | no       | 1–32 chars; any build-injected channel name, e.g. `cws` or `edge`. Backfill only — an existing value is never overwritten |
+| distribution | string? | no       | 1–32 chars; any build-injected channel name, e.g. `cws` or `edge`. Replaces the previously recorded channel when supplied |
 
 **Responses**
 | Status | Body                                                                       |
