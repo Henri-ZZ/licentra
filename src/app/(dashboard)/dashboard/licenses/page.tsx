@@ -140,7 +140,7 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                         : latest,
                     null,
                   );
-                  // Version + distribution badge, e.g. "v2.2.0 · chrome_web_store".
+                  // Version + distribution badge, e.g. "v2.2.0 · cws".
                   const lastCheckInMeta = [
                     lastCheckIn?.appVersion
                       ? `v${lastCheckIn.appVersion}`

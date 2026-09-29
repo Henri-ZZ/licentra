@@ -196,7 +196,7 @@ one is created.
   "key": "ABCD-1234-EFGH-5678",
   "fingerprint": "machine-id-or-hash",
   "appVersion": "1.4.2",
-  "distribution": "chrome_web_store"
+  "distribution": "cws"
 }
 ```
 
@@ -205,7 +205,7 @@ one is created.
 | key          | string  | yes      | The customer license key                  |
 | fingerprint  | string  | yes      | Stable per-machine identifier             |
 | appVersion   | string? | no       | ≤ 32 chars; client/plugin version, e.g. `1.4.2` |
-| distribution | string? | no       | Build-injected channel of the client artifact: `chrome_web_store`, `edge_addons`, `direct`, `development` |
+| distribution | string? | no       | 1–32 chars; any build-injected channel name, e.g. `cws` or `edge` |
 
 **Responses**
 | Status | Body                                                                          |
@@ -240,7 +240,7 @@ has passed (default 24h — controlled by the product's
   "key": "ABCD-1234-EFGH-5678",
   "fingerprint": "machine-id-or-hash",
   "appVersion": "1.4.2",
-  "distribution": "chrome_web_store"
+  "distribution": "cws"
 }
 ```
 
@@ -249,7 +249,7 @@ has passed (default 24h — controlled by the product's
 | key          | string  | yes      |                                                |
 | fingerprint  | string  | yes      |                                                |
 | appVersion   | string? | no       | ≤ 32 chars; client/plugin version (e.g. `1.4.2`) |
-| distribution | string? | no       | Build-injected channel: `chrome_web_store`, `edge_addons`, `direct`, `development`. Backfill only — an existing value is never overwritten |
+| distribution | string? | no       | 1–32 chars; any build-injected channel name, e.g. `cws` or `edge`. Backfill only — an existing value is never overwritten |
 
 **Responses**
 | Status | Body                                                                       |

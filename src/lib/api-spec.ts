@@ -45,7 +45,7 @@ export const openApiSpec = {
                 key: "ABCD-1234-EFGH-5678",
                 fingerprint: "mac-abc123def",
                 appVersion: "1.4.2",
-                distribution: "chrome_web_store",
+                distribution: "cws",
               },
             },
           },
@@ -91,7 +91,7 @@ export const openApiSpec = {
                 key: "ABCD-1234-EFGH-5678",
                 fingerprint: "mac-abc123def",
                 appVersion: "1.4.2",
-                distribution: "chrome_web_store",
+                distribution: "cws",
               },
             },
           },
@@ -384,10 +384,12 @@ export const openApiSpec = {
           },
           distribution: {
             type: "string",
-            enum: ["chrome_web_store", "edge_addons", "direct", "development"],
+            minLength: 1,
+            maxLength: 32,
             description:
               "Optional build-injected distribution channel of the client " +
-              "artifact. Recorded once, when the activation is first seen, " +
+              "artifact (for example 'cws' or 'edge'). Products may use any " +
+              "non-empty channel name. Recorded once, when the activation is first seen, " +
               "and never overwritten afterwards.",
           },
         },
@@ -407,10 +409,12 @@ export const openApiSpec = {
           },
           distribution: {
             type: "string",
-            enum: ["chrome_web_store", "edge_addons", "direct", "development"],
+            minLength: 1,
+            maxLength: 32,
             description:
               "Optional build-injected distribution channel of the client " +
-              "artifact. Only backfills activations created before the client " +
+              "artifact (for example 'cws' or 'edge'). Products may use any " +
+              "non-empty channel name. Only backfills activations created before the client " +
               "started sending it — an existing value is never overwritten.",
           },
         },

@@ -8,15 +8,17 @@ import { z } from "zod";
  * channel can never be inferred from the runtime browser — an Edge user may
  * have installed from the Chrome Web Store.
  *
- * Optional everywhere because clients predating the field omit it. Shared by
- * `/api/license/activate` and `/api/license/check-in` so the two contracts can
- * never drift apart.
+ * Optional everywhere because clients predating the field omit it. The value
+ * is intentionally not an enum: products own their build channel names (for
+ * example `cws` or `edge`) and may introduce new ones independently of
+ * Licentra. Shared by `/api/license/activate` and `/api/license/check-in` so
+ * the two contracts can never drift apart.
  */
-export const DISTRIBUTIONS = [
-  "chrome_web_store",
-  "edge_addons",
-  "direct",
-  "development",
-] as const;
+export const MAX_DISTRIBUTION_LENGTH = 32;
 
-export const distributionSchema = z.enum(DISTRIBUTIONS).optional();
+export const distributionSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_DISTRIBUTION_LENGTH)
+  .optional();
