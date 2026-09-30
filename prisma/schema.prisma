@@ -147,7 +147,7 @@ model Activation {
   fingerprint   String
   ipAddress     String?
   // Compact browser summary (e.g. "Chrome 126 · macOS") parsed from the
-  // User-Agent at activation time. The raw UA string is NOT stored.
+  // User-Agent at activation and check-in time. The raw UA string is NOT stored.
   browser       String?
   // Plugin/app version reported by the client on activate / check-in
   // (e.g. "1.4.2"). Optional: older clients that don't send it stay null.

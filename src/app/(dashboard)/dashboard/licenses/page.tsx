@@ -160,21 +160,23 @@ export default async function LicensesPage({ searchParams }: PageProps) {
                         </Link>
                       </TableCell>
                       <TableCell>{l.product?.name ?? "—"}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {l.order?.paddleEmail ?? l.email ?? "—"}
+                      <TableCell className="whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-muted-foreground">
+                            {l.order?.paddleEmail ?? l.email ?? "—"}
+                          </span>
+                          {(lastCheckIn?.browser ?? lastActivation?.browser) && (
+                            <span className="rounded border px-1 text-[10px] leading-4 text-muted-foreground">
+                              {lastCheckIn?.browser ?? lastActivation?.browser}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {l.activations.length} / {l.maxActivations}
                       </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap min-w-[230px]">
-                        <div className="flex items-center gap-1.5">
-                          <span>{formatDateTimeCn(lastActivatedAt)}</span>
-                          {lastActivation?.browser && (
-                            <span className="rounded border px-1 text-[10px] leading-4 text-muted-foreground">
-                              {lastActivation.browser}
-                            </span>
-                          )}
-                        </div>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {formatDateTimeCn(lastActivatedAt)}
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap">
                         <div className="flex items-center gap-1.5">

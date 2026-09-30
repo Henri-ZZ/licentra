@@ -81,7 +81,8 @@ export const openApiSpec = {
           "Passing `appVersion` records the running client version on the " +
           "activation, shown in the dashboard's Last check-in column. " +
           "When supplied, `distribution` updates the activation to the channel " +
-          "reported by the currently running client artifact.",
+          "reported by the currently running client artifact. The compact " +
+          "browser/OS summary is refreshed from the request User-Agent.",
         requestBody: {
           required: true,
           content: {

@@ -8,6 +8,7 @@ import {
 } from "@/lib/license-query";
 import { sha256Hex, isValidLicenseKeyFormat } from "@/lib/license-key";
 import { prisma } from "@/lib/prisma";
+import { summarizeUserAgent } from "@/lib/user-agent";
 
 const bodySchema = z.object({
   key: z.string().min(1),
@@ -41,6 +42,7 @@ export async function POST(request: NextRequest) {
 
   const keyHash = sha256Hex(parsed.data.key);
   const fpHash = sha256Hex(parsed.data.fingerprint);
+  const browser = summarizeUserAgent(request.headers.get("user-agent") ?? "");
 
   const license = await loadLicenseByHash(keyHash);
   if (!license) {
@@ -77,6 +79,7 @@ export async function POST(request: NextRequest) {
       // another store or move the same activation between browsers. Older
       // clients that omit the field preserve the last known value.
       distribution: parsed.data.distribution ?? activation.distribution,
+      browser: browser ?? activation.browser,
     },
   });
 

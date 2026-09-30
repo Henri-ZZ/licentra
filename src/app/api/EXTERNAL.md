@@ -261,6 +261,10 @@ has passed (default 24h — controlled by the product's
 `license_refunded`, `activation_evicted` (this fingerprint is no longer
 bound — the user must re-activate).
 
+**Side effects**: updates `lastCheckedAt`, the supplied app version and
+distribution, and the compact browser/OS summary derived from the current
+request's `User-Agent`. The raw User-Agent is never stored.
+
 ---
 
 # Part 2 — Paddle webhooks
